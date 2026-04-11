@@ -1334,32 +1334,47 @@ void ForceEnableXamlSounds(HMODULE hWindowsUIXaml)
     );
     if (match)
     {
-        PBYTE jnz = match + 14;
-        DWORD flOldProtect = 0;
-        if (VirtualProtect(jnz, 1, PAGE_EXECUTE_READWRITE, &flOldProtect))
+        match += 14; // Point to jnz
+    }
+    else
+    {
+        // 29553+
+        // 83 79 ?? 02 74 ?? 83 79 ?? 00 75 ?? E8 ?? ?? ?? ?? 84 C0 75
+        //                                                          ^^ change jnz to jmp
+        match = FindPattern(
+            pWindowsUIXamlText,
+            cbWindowsUIXamlText,
+            "\x83\x79\x00\x02\x74\x00\x83\x79\x00\x00\x75\x00\xE8\x00\x00\x00\x00\x84\xC0\x75",
+            "xx?xx?xx?xx?x????xxx"
+        );
+        if (match)
         {
-            *jnz = 0xEB;
-            VirtualProtect(jnz, 1, flOldProtect, &flOldProtect);
+            match += 19; // Point to jnz
+        }
+    }
+    if (match)
+    {
+        DWORD flOldProtect = 0;
+        if (VirtualProtect(match, 1, PAGE_EXECUTE_READWRITE, &flOldProtect))
+        {
+            *match = 0xEB;
+            VirtualProtect(match, 1, flOldProtect, &flOldProtect);
         }
     }
 #elif defined(_M_ARM64)
-    // 1F 09 00 71 ?? ?? ?? 54 ?? 00 00 35 ?? ?? ?? ?? 08 1C 00 53 ?? ?? ?? ??
-    //                                                             ^^^^^^^^^^^ CBNZ -> B, CBZ -> NOP
-    PBYTE match = FindPattern(
+    // 08 ?? ?? B9 1F 09 00 71 ?? ?? ?? 54 ?? 00 00 35 ?? ?? ?? ??
+    //                                                 ^^^^^^^^^^^ BL -> MOV W0, #1
+    PBYTE match = FindPattern_4_(
         pWindowsUIXamlText,
         cbWindowsUIXamlText,
-        "\x1F\x09\x00\x71\x00\x00\x00\x54\x00\x00\x00\x35\x00\x00\x00\x00\x08\x1C\x00\x53",
-        "xxxx???x?xxx????xxxx"
+        "\x08\x00\x00\xB9\x1F\x09\x00\x71\x00\x00\x00\x54\x00\x00\x00\x35",
+        "x??xxxxx???x?xxx"
     );
     if (match)
     {
-        match += 20;
+        match += 16;
         DWORD currentInsn = *(DWORD*)match;
-        DWORD newInsn = ARM64_CBNZWToB(currentInsn);
-        if (!newInsn && ARM64_IsCBZW(currentInsn))
-        {
-            newInsn = 0xD503201F; // NOP
-        }
+        DWORD newInsn = ARM64_IsBL(currentInsn) ? 0x52800020 : 0; // MOV W0, #1
         if (newInsn)
         {
             DWORD flOldProtect = 0;
@@ -1526,13 +1541,8 @@ HMODULE __fastcall Windows11v22H2_combase_LoadLibraryExW(LPCWSTR lpLibFileName, 
             pWindowsXamlManagerFactory->lpVtbl->QueryInterface(pWindowsXamlManagerFactory, &uuidof_Windows_UI_Core_ICoreWindow5, &pCoreWindow5);
             if (pCoreWindow5)
             {
-                INT64* pCoreWindow5Vtbl = pCoreWindow5->lpVtbl;
-                if (VirtualProtect(pCoreWindow5->lpVtbl, sizeof(IInspectableVtbl) + sizeof(INT64), PAGE_EXECUTE_READWRITE, &flOldProtect))
-                {
-                    ICoreWindow5_get_DispatcherQueueFunc = pCoreWindow5Vtbl[6];
-                    pCoreWindow5Vtbl[6] = ICoreWindow5_get_DispatcherQueueHook;
-                    VirtualProtect(pCoreWindow5->lpVtbl, sizeof(IInspectableVtbl) + sizeof(INT64), flOldProtect, &flOldProtect);
-                }
+                void** pCoreWindow5Vtbl = *(void***)pCoreWindow5;
+                REPLACE_VTABLE_ENTRY(pCoreWindow5Vtbl, 6, ICoreWindow5_get_DispatcherQueue);
                 pCoreWindow5->lpVtbl->Release(pCoreWindow5);
             }
             pWindowsXamlManagerFactory->lpVtbl->Release(pWindowsXamlManagerFactory);
@@ -2498,11 +2508,11 @@ static void HookImmersiveMenuFunctions(
         "xxxxxxxxxxxxxxxxx????xxx????xxx????xxxxxx????xx?????xxx"
     );
 #elif defined(_M_ARM64)
-    // 40 F9 43 03 1C 32 E4 03 ?? AA ?? ?? FF 97
-    //                               ^^^^^^^^^^^
+    // ?? ?? 40 F9 43 03 1C 32 E4 03 ?? AA ?? ?? FF 97
+    //                                     ^^^^^^^^^^^
     // Ref: ImmersiveContextMenuHelper::ApplyOwnerDrawToMenu()
-    PBYTE match = (PBYTE)FindPattern(
-        pText, cbText,
+    PBYTE match = (PBYTE)FindPattern_4_(
+        pText + 2, cbText - 2,
         "\x40\xF9\x43\x03\x1C\x32\xE4\x03\x00\xAA\x00\x00\xFF\x97",
         "xxxxxxxx?x??xx"
     );
@@ -2516,7 +2526,7 @@ static void HookImmersiveMenuFunctions(
         // 43 03 1C 32 E4 03 ?? AA E2 03 ?? AA ?? ?? FF 97 // 27938
         //                                     ^^^^^^^^^^^
         // Ref: ImmersiveContextMenuHelper::ApplyOwnerDrawToMenu()
-        match = (PBYTE)FindPattern(
+        match = (PBYTE)FindPattern_4_(
             pText, cbText,
             "\x43\x03\x1C\x32\xE4\x03\x00\xAA\xE2\x03\x00\xAA\x00\x00\xFF\x97",
             "xxxxxx?xxx?x??xx"
@@ -8321,7 +8331,7 @@ void FixTIFEBreakagesForLegacyControlInterfaces(PBYTE pSearchBegin, size_t cbSea
     // No TIFE feature flag
     // 69 ?? ?? B9 68 ?? ?? B9 69 ?? ?? 29 <TBZ/TBNZ>
     // Ref: CInternetToolbar::_CreateBands()
-    PBYTE match = FindPattern(
+    PBYTE match = FindPattern_4_(
         pSearchBegin,
         cbSearch,
         "\x69\x00\x00\xB9\x68\x00\x00\xB9\x69\x00\x00\x29",
@@ -8337,7 +8347,7 @@ void FixTIFEBreakagesForLegacyControlInterfaces(PBYTE pSearchBegin, size_t cbSea
         // 68 ?? ?? B9 68 00 20 36 08 79 1B 12 68 ?? ?? B9
         //             ^^^^^^^^^^^ <TBZ>
         // Ref: CInternetToolbar::_CreateBands()
-        match = FindPattern(
+        match = FindPattern_4_(
             pSearchBegin,
             cbSearch,
             "\x68\x00\x00\xB9\x68\x00\x20\x36\x08\x79\x1B\x12\x68\x00\x00\xB9",
@@ -9341,7 +9351,7 @@ static void PatchAddressBarSizing(PBYTE pSearchBegin, size_t cbSearch)
         // CAddressBand::_PositionChildWindows() <- CAddressBand::ResizeToolbarButtons()
         // 81 00 80 52 02 00 00 14 21 00 80 52
         // xxxxxxxxxxx To 21 00 80 52
-        match = FindPattern(
+        match = FindPattern_4_(
             pSearchBegin,
             cbSearch,
             "\x81\x00\x80\x52\x02\x00\x00\x14\x21\x00\x80\x52",
@@ -9361,7 +9371,7 @@ static void PatchAddressBarSizing(PBYTE pSearchBegin, size_t cbSearch)
             // CAddressBand::ResizeToolbarButtons()
             // 88 00 80 52 02 00 00 14 28 00 80 52
             // xxxxxxxxxxx To 28 00 80 52
-            match = FindPattern(
+            match = FindPattern_4_(
                 pSearchBegin,
                 cbSearch,
                 "\x88\x00\x80\x52\x02\x00\x00\x14\x28\x00\x80\x52",
@@ -9759,92 +9769,6 @@ void TryToFindExplorerOffsets(HANDLE hExplorer, PBYTE pSearchBegin, size_t cbSea
     if (!pSearchBegin || !cbSearch)
         return;
 
-    if (!pOffsets[0] || pOffsets[0] == 0xFFFFFFFF)
-    {
-        // ImmersiveTray::AttachWindowToTray()
-#if defined(_M_X64)
-        // 48 8B 93 ?? ?? ?? ?? 48 8B 8B ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 4B
-        //                                              ^^^^^^^^^^^
-        // Ref: CTaskListThumbnailWnd::SetSite()
-        PBYTE match = FindPattern(
-            pSearchBegin, cbSearch,
-            "\x48\x8B\x93\x00\x00\x00\x00\x48\x8B\x8B\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x48\x8B\x4B",
-            "xxx????xxx????x????xxx"
-        );
-        if (match)
-        {
-            match += 14;
-            pOffsets[0] = match + 5 + *(int*)(match + 1) - (PBYTE)hExplorer;
-            printf("explorer.exe!ImmersiveTray::AttachWindowToTray() = %lX\n", pOffsets[0]);
-        }
-#endif
-    }
-
-    if (!pOffsets[1] || pOffsets[1] == 0xFFFFFFFF)
-    {
-        // ImmersiveTray::RaiseWindow()
-#if defined(_M_X64)
-        // 41 B9 02 00 00 00 48 8B 8B ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0
-        //                                           ^^^^^^^^^^^
-        // Ref: CTaskListThumbnailWnd::_RaiseWindowForLivePreviewIfNeeded()
-        PBYTE match = FindPattern(
-            pSearchBegin, cbSearch,
-            "\x41\xB9\x02\x00\x00\x00\x48\x8B\x8B\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x85\xC0",
-            "xxxxxxxxx????x????xx"
-        );
-        if (match)
-        {
-            match += 13;
-            pOffsets[1] = match + 5 + *(int*)(match + 1) - (PBYTE)hExplorer;
-            printf("explorer.exe!ImmersiveTray::RaiseWindow() = %lX\n", pOffsets[1]);
-        }
-#endif
-    }
-
-    if (!pOffsets[2] || pOffsets[2] == 0xFFFFFFFF)
-    {
-        // CTaskBand_CreateInstance()
-#if defined(_M_X64)
-        // Pre-24H2 (output variable uninitialized)
-        // Tested: 19041.3758, 22000.51, 22621.1992
-        // 48 8B F1 4C 8D 44 24 ?? 48 8B 49 ?? 33 D2 E8 ?? ?? ?? ??
-        //                                              ^^^^^^^^^^^
-        // Ref: CTrayBandSite::_AddRequiredBands()
-        PBYTE match = FindPattern(
-            pSearchBegin, cbSearch,
-            "\x48\x8B\xF1\x4C\x8D\x44\x24\x00\x48\x8B\x49\x00\x33\xD2\xE8",
-            "xxxxxxx?xxx?xxx"
-        );
-        if (match)
-        {
-            match += 14;
-            pOffsets[2] = match + 5 + *(int*)(match + 1) - (PBYTE)hExplorer;
-        }
-        else
-        {
-            // 24H2 (output variable initialized to 0)
-            // Tested: 25951, 26080
-            // 4C 8D 40 ?? 48 8B F1 33 D2 48 8B 49 ?? E8 ?? ?? ?? ??
-            //                                           ^^^^^^^^^^^
-            // Ref: CTrayBandSite::_AddRequiredBands()
-            match = FindPattern(
-                pSearchBegin, cbSearch,
-                "\x4C\x8D\x40\x00\x48\x8B\xF1\x33\xD2\x48\x8B\x49\x00\xE8",
-                "xxx?xxxxxxxx?x"
-            );
-            if (match)
-            {
-                match += 13;
-                pOffsets[2] = match + 5 + *(int*)(match + 1) - (PBYTE)hExplorer;
-            }
-        }
-        if (match)
-        {
-            printf("explorer.exe!CTaskBand_CreateInstance() = %lX\n", pOffsets[2]);
-        }
-#endif
-    }
-
     if (!pOffsets[3] || pOffsets[3] == 0xFFFFFFFF)
     {
         // HandleFirstTimeLegacy()
@@ -9951,7 +9875,7 @@ static void PatchAppResolver()
 #elif defined(_M_ARM64)
     // 7F 23 03 D5  FD 7B BC A9  F3 53 01 A9  F5 5B 02 A9  F7 1B 00 F9  FD 03 00 91  ?? ?? ?? ??  FF 43 01 D1  F7 03 00 91  30 00 80 92  F0 1A 00 F9  ?? 03 01 AA  ?? 03 02 AA  FF ?? 00 F9
     // ----------- PACIBSP, don't scan for this because it's everywhere
-    PBYTE match = FindPattern(
+    PBYTE match = FindPattern_4_(
         pAppResolverText,
         cbAppResolverText,
         "\xFD\x7B\xBC\xA9\xF3\x53\x01\xA9\xF5\x5B\x02\xA9\xF7\x1B\x00\xF9\xFD\x03\x00\x91\x00\x00\x00\x00\xFF\x43\x01\xD1\xF7\x03\x00\x91\x30\x00\x80\x92\xF0\x1A\x00\xF9\x00\x03\x01\xAA\x00\x03\x02\xAA\xFF\x00\x00\xF9",
@@ -10922,7 +10846,8 @@ DWORD Inject(BOOL bIsExplorer)
     DWORD cbExplorerText;
     TextSectionBeginAndSize(hExplorer, &pExplorerText, &cbExplorerText);
 
-    if (IsWindows11Version22H2OrHigher())
+    if (IsWindows11Version22H2OrHigher()
+        && (global_rovi.dwBuildNumber < 26100 || (global_rovi.dwBuildNumber == 26100 && global_ubr < 1301)))
     {
         TryToFindExplorerOffsets(hExplorer, pExplorerText, cbExplorerText, symbols_PTRS.explorer_PTRS);
     }
@@ -11047,6 +10972,18 @@ DWORD Inject(BOOL bIsExplorer)
             "\x4C\x8D\x05\x00\x00\x00\x00\x48\x8D\x0D\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x85\xC0",
             "xxx????xxx????x????xx"
         );
+        if (!match)
+        {
+            // 20348 (Iron; Server 2022)
+            // 4C 8D 05 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B
+            //                                              ^^^^^^^^^^^
+            match = FindPattern(
+                pExplorerText,
+                cbExplorerText,
+                "\x4C\x8D\x05\x00\x00\x00\x00\x48\x8D\x0D\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x48\x8B",
+                "xxx????xxx????x????xx"
+            );
+        }
         if (match)
         {
             match += 7; // Point to 48
@@ -12004,29 +11941,49 @@ static BOOL StartMenu_FixContextMenuXbfHijackMethod()
         "\x49\x89\x43\xC8\xE8\x00\x00\x00\x00\x85\xC0",
         "xxxxx????xx"
     );
-    if (!match)
-        return FALSE;
-
-    match += 4;
-    match += 5 + *(int*)(match + 1);
+    if (match)
+    {
+        match += 4;
+        match += 5 + *(int*)(match + 1);
+    }
+    else
+    {
+        // 29553+
+        // 48 8B 45 48 48 89 44 24 ?? E8 ?? ?? ?? ?? 85 C0
+        //                               ^^^^^^^^^^^
+        // Ref: CCoreServices::LoadXamlResource()
+        match = FindPattern(
+            pWindowsUIXamlText,
+            cbWindowsUIXamlText,
+            "\x48\x8B\x45\x48\x48\x89\x44\x24\x00\xE8\x00\x00\x00\x00\x85\xC0",
+            "xxxxxxxx?x????xx"
+        );
+        if (match)
+        {
+            match += 9;
+            match += 5 + *(int*)(match + 1);
+        }
+    }
 #elif defined(_M_ARM64)
     // E1 0B 40 F9 05 00 80 D2 04 00 80 D2 E3 03 ?? AA E2 03 ?? AA E0 03 ?? AA ?? ?? ?? 97
     //                                                                         ^^^^^^^^^^^
     // Ref: CoreServices_TryGetApplicationResource()
-    PBYTE match = FindPattern(
+    PBYTE match = FindPattern_4_(
         pWindowsUIXamlText,
         cbWindowsUIXamlText,
         "\xE1\x0B\x40\xF9\x05\x00\x80\xD2\x04\x00\x80\xD2\xE3\x03\x00\xAA\xE2\x03\x00\xAA\xE0\x03\x00\xAA\x00\x00\x00\x97",
         "xxxxxxxxxxxxxx?xxx?xxx?x???x"
     );
-    if (!match)
-        return FALSE;
-
-    match += 24;
-    match = (PBYTE)ARM64_FollowBL((DWORD*)match);
-    if (!match)
-        return FALSE;
+    if (match)
+    {
+        match += 24;
+        match = (PBYTE)ARM64_FollowBL((DWORD*)match);
+    }
 #endif
+    if (!match)
+    {
+        return FALSE;
+    }
 
     CCoreServices_TryLoadXamlResourceHelperFunc = match;
     funchook_prepare(
@@ -12074,7 +12031,7 @@ static void StartMenu_FixUserTileMenu(PBYTE pSearchBegin, size_t cbSearch)
     // 63 00 80 52 E2 03 1B AA E1 03 14 AA E0 03 19 AA ?? ?? ?? 94
     //                                                 ^^^^^^^^^^^
     // Ref: <lambda_3a9b433356e31b02e54fffbca0ecf3fa>::operator()
-    PBYTE match = FindPattern(
+    PBYTE match = FindPattern_4_(
         pSearchBegin,
         cbSearch,
         "\x63\x00\x80\x52\xE2\x03\x1B\xAA\xE1\x03\x14\xAA\xE0\x03\x19\xAA\x00\x00\x00\x94",

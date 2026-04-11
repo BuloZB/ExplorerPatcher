@@ -536,11 +536,6 @@ namespace ABI::WindowsInternal::Shell::UnifiedTile::CuratedTileCollections
         TilePinSize_Tile4x2 = 1,
     };
 
-    namespace DataStoreCache::CuratedTileCollectionTransformer
-    {
-        class CuratedTile;
-    }
-
     MIDL_INTERFACE("354cba6d-19ab-490c-97b6-8d4d9862e052")
     ICuratedTileGroup : public IInspectable
     {
@@ -585,10 +580,6 @@ namespace ABI::WindowsInternal::Shell::UnifiedTile::CuratedTileCollections
         virtual HRESULT STDMETHODCALLTYPE HasCustomProperty(const HSTRING, BOOLEAN*) = 0;
         virtual HRESULT STDMETHODCALLTYPE RemoveCustomProperty(const HSTRING) = 0;
         virtual HRESULT STDMETHODCALLTYPE SetCustomProperty(const HSTRING, HSTRING) = 0;
-        virtual HRESULT STDMETHODCALLTYPE EnsureTileRegistration() = 0;
-        virtual HRESULT STDMETHODCALLTYPE ResurrectTile(std::shared_ptr<DataStoreCache::CuratedTileCollectionTransformer::CuratedTile>, const GUID&) = 0;
-        virtual HRESULT STDMETHODCALLTYPE OnTileAddedWithinCollection(IUnifiedTileIdentifier*) = 0;
-        virtual HRESULT STDMETHODCALLTYPE OnTileRemovedWithinCollection(IUnifiedTileIdentifier*) = 0;
     };
 
     MIDL_INTERFACE("adbf8965-6056-4126-ab26-6660af4661ce")
@@ -1218,12 +1209,12 @@ HRESULT PatchUnifiedTilePinUnpinProvider(HMODULE hModule)
         }
     }
 #elif defined(_M_ARM64)
-    // 40 F9 E3 03 15 AA ?? ?? 40 F9 E1 03 ?? AA E0 03 ?? AA ?? ?? ?? ?? E3 03 00 2A // NI, GE
-    //                                                       ^^^^^^^^^^^
+    // ?? ?? 40 F9 E3 03 15 AA ?? ?? 40 F9 E1 03 ?? AA E0 03 ?? AA ?? ?? ?? ?? E3 03 00 2A // NI, GE
+    //                                                             ^^^^^^^^^^^
     // Ref: WindowsInternal::Shell::UnifiedTile::Private::UnifiedTilePinUnpinVerbProvider::GetVerbs()
-    PBYTE match = (PBYTE)FindPattern(
-        pText,
-        cbText,
+    PBYTE match = (PBYTE)FindPattern_4_(
+        pText + 2,
+        cbText - 2,
         "\x40\xF9\xE3\x03\x15\xAA\x00\x00\x40\xF9\xE1\x03\x00\xAA\xE0\x03\x00\xAA\x00\x00\x00\x00\xE3\x03\x00\x2A",
         "xxxxxx??xxxx?xxx?x????xxxx"
     );
@@ -1237,7 +1228,7 @@ HRESULT PatchUnifiedTilePinUnpinProvider(HMODULE hModule)
         // E4 8A 40 A9 E3 03 ?? AA E1 03 ?? AA E0 03 ?? AA ?? ?? ?? ?? ?? ?? ?? F9 E3 03 00 2A // BR
         //                                                 ^^^^^^^^^^^
         // Ref: WindowsInternal::Shell::UnifiedTile::Private::UnifiedTilePinUnpinVerbProvider::GetVerbs()
-        match = (PBYTE)FindPattern(
+        match = (PBYTE)FindPattern_4_(
             pText,
             cbText,
             "\xE4\x8A\x40\xA9\xE3\x03\x00\xAA\xE1\x03\x00\xAA\xE0\x03\x00\xAA\x00\x00\x00\x00\x00\x00\x00\xF9\xE3\x03\x00\x2A",
@@ -1306,6 +1297,13 @@ HRESULT AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStart(void*
 
     if (!dwStartShowClassicMode)
         return AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStartFunc(_this, a2, a3);
+
+    // UnifiedTileIdentifier^ tileIdentifier = UnifiedTileIdentifier::Create(a2->GetAppID(a3));
+    // StartTilePinnedShortcutsManager::CreateUserPinnedShortcutTile(tileIdentifier);
+    // CuratedTileCollectionManager^ tileCollectionManager = ref new CuratedTileCollectionManager();
+    // CuratedTileCollection^ tileCollection = tileCollectionManager->GetCollection(L"Start.TileGrid");
+    // tileCollection->PinToStart(tileIdentifier, TilePinSize::Tile2x2);
+    // tileCollection->Commit();
 
     ComPtr<IWin32UnifiedTileIdentifierFactory> pTileIdentifierFactory;
     RETURN_IF_FAILED(Windows::Foundation::GetActivationFactory(
