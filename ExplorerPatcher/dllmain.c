@@ -1034,11 +1034,11 @@ typedef struct ITaskBtnGroupVtbl
 
     int(STDMETHODCALLTYPE* GetIdealSpan)(
         ITaskBtnGroup* This,
-        int var2,
-        int var3,
-        int var4,
-        int var5,
-        int var6);
+        int rowColBegin,
+        int rowColEnd,
+        BOOL bUseGlomState,
+        BOOL bUseGlomAnim,
+        int* pcxShrinkable);
     // ...
 
     END_INTERFACE
@@ -1051,28 +1051,32 @@ interface ITaskBtnGroup
 
 typedef enum eTBGROUPTYPE
 {
-    TBGROUPTYPE_Unknown,
-    TBGROUPTYPE_Normal,
-    TBGROUPTYPE_Pinned,
-    TBGROUPTYPE_Stacked,
-    TBGROUPTYPE_Invisible,
+    TBG_UNKNOWN,
+    TBG_SWITCHER,
+    TBG_LAUNCHER,
+    TBG_GLOM,
+    TBG_GHOST,
 } TBGROUPTYPE;
 
-int (STDMETHODCALLTYPE *CTaskBtnGroup_GetIdealSpanFunc)(ITaskBtnGroup* pTaskBtnGroup, int var2, int var3,
-    int var4, int var5, int* var6) = NULL;
-int STDMETHODCALLTYPE CTaskBtnGroup_GetIdealSpanHook(ITaskBtnGroup* pTaskBtnGroup, int var2, int var3,
-    int var4, int var5, int* var6)
+// int rowColBegin, int rowColEnd, BOOL bUseGlomState, BOOL bUseGlomAnim, int* pcxShrinkable
+int (STDMETHODCALLTYPE *CTaskBtnGroup_GetIdealSpanFunc)(
+    ITaskBtnGroup* pTaskBtnGroup, int rowColBegin, int rowColEnd, BOOL bUseGlomState, BOOL bUseGlomAnim,
+    int* pcxShrinkable) = NULL;
+int STDMETHODCALLTYPE CTaskBtnGroup_GetIdealSpanHook(
+    ITaskBtnGroup* pTaskBtnGroup, int rowColBegin, int rowColEnd, BOOL bUseGlomState, BOOL bUseGlomAnim,
+    int* pcxShrinkable)
 {
     BOOL bTypeModified = FALSE;
     PBYTE _this = (PBYTE)pTaskBtnGroup - 16 /*sizeof(CTaskUnknown)*/;
     TBGROUPTYPE* pGroupType = (TBGROUPTYPE*)(_this + 80 /*offsetof(CTaskBtnGroup, m_groupType)*/);
     TBGROUPTYPE lastGroupType = *pGroupType;
-    if (bRemoveExtraGapAroundPinnedItems && lastGroupType == TBGROUPTYPE_Pinned)
+    if (bRemoveExtraGapAroundPinnedItems && lastGroupType == TBG_LAUNCHER)
     {
-        *pGroupType = TBGROUPTYPE_Invisible;
+        *pGroupType = TBG_GHOST;
         bTypeModified = TRUE;
     }
-    int ret = CTaskBtnGroup_GetIdealSpanFunc(pTaskBtnGroup, var2, var3, var4, var5, var6);
+    int ret = CTaskBtnGroup_GetIdealSpanFunc(
+        pTaskBtnGroup, rowColBegin, rowColEnd, bUseGlomState, bUseGlomAnim, pcxShrinkable);
     if (bRemoveExtraGapAroundPinnedItems && bTypeModified)
     {
         *pGroupType = lastGroupType;

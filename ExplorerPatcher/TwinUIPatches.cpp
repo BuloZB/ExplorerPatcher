@@ -2762,6 +2762,7 @@ namespace ABI::Windows::UI::Xaml
 
 static struct
 {
+    int jumpViewExperienceManager_trayStuckPlace;
     int jumpViewExperienceManager_rcWorkArea;
 } g_JVPositioningPatchOffsets;
 
@@ -2921,7 +2922,7 @@ HRESULT CJumpViewExperienceManager_EnsureWindowPositionHook(void* _this, CSingle
     UINT dpi;
     RETURN_IF_FAILED(CJumpViewExperienceManager_GetMonitorInformation(
         _this, ptAnchor, &rcWorkArea, &dpi,
-        (EDGEUI_TRAYSTUCKPLACE*)((PBYTE)_this + 0x1F0))); // 850
+        (EDGEUI_TRAYSTUCKPLACE*)((PBYTE)_this + g_JVPositioningPatchOffsets.jumpViewExperienceManager_trayStuckPlace))); // 850
     *((RECT*)((PBYTE)_this + g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea)) = rcWorkArea;
 
     int width, height;
@@ -2944,15 +2945,19 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
 
     // EDGEUI_TRAYSTUCKPLACE CJumpViewExperienceManager::m_trayStuckPlace
 #if defined(_M_X64)
-    // 8B 8B B0 01 00 00 BF 5C 00 00 00 85 C9
+    // 8B 8B ?? ?? 00 00 BF 5C 00 00 00 85 C9
     //       ^^^^^^^^^^^
     // Ref: CJumpViewExperienceManager::OnViewUncloaking()
     PBYTE matchOffsetTrayStuckPlace = (PBYTE)FindPattern(
         pSearchBegin,
         cbSearch,
-        "\x8B\x8B\xB0\x01\x00\x00\xBF\x5C\x00\x00\x00\x85\xC9",
-        "xxxxxxxxxxxxx"
+        "\x8B\x8B\x00\x00\x00\x00\xBF\x5C\x00\x00\x00\x85\xC9",
+        "xx??xxxxxxxxx"
     );
+    if (matchOffsetTrayStuckPlace)
+    {
+        g_JVPositioningPatchOffsets.jumpViewExperienceManager_trayStuckPlace = 0x40 + *(int*)(matchOffsetTrayStuckPlace + 2);
+    }
 #elif defined(_M_ARM64)
     // ?? ?? 41 B9 89 0B 80 52 A8 01 00 34 1F 05 00 71 20 01 00 54 1F 09 00 71 A0 00 00 54 1F 0D 00 71 01 01 00 54 69 0B 80 52
     // ^^^^^^^^^^^       Important instr. to distinguish from MeetNowExperienceManager::OnViewUncloaking() in GE > !!!!!!!!!!!
@@ -2963,7 +2968,19 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
         "\x41\xB9\x89\x0B\x80\x52\xA8\x01\x00\x34\x1F\x05\x00\x71\x20\x01\x00\x54\x1F\x09\x00\x71\xA0\x00\x00\x54\x1F\x0D\x00\x71\x01\x01\x00\x54\x69\x0B\x80\x52",
         "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     );
-    if (!matchOffsetTrayStuckPlace)
+    if (matchOffsetTrayStuckPlace)
+    {
+        int off = (int)ARM64_DecodeLDRIMMW(*(DWORD*)matchOffsetTrayStuckPlace);
+        if (off != -1)
+        {
+            g_JVPositioningPatchOffsets.jumpViewExperienceManager_trayStuckPlace = 0x40 + off;
+        }
+        else
+        {
+            matchOffsetTrayStuckPlace = nullptr;
+        }
+    }
+    else
     {
         // 29553+
         // ?? ?? 41 B9 C8 01 00 34 1F 05 00 71 40 01 00 54 1F 09 00 71 C0 00 00 54 89 0B 80 52
@@ -2975,6 +2992,18 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
             "\x41\xB9\xC8\x01\x00\x34\x1F\x05\x00\x71\x40\x01\x00\x54\x1F\x09\x00\x71\xC0\x00\x00\x54\x89\x0B\x80\x52",
             "xxxxxxxxxxxxxxxxxxxxxxxxxx"
         );
+        if (matchOffsetTrayStuckPlace)
+        {
+            int off = (int)ARM64_DecodeLDRIMMW(*(DWORD*)matchOffsetTrayStuckPlace);
+            if (off != -1)
+            {
+                g_JVPositioningPatchOffsets.jumpViewExperienceManager_trayStuckPlace = 0x40 + off;
+            }
+            else
+            {
+                matchOffsetTrayStuckPlace = nullptr;
+            }
+        }
     }
 #endif
     if (matchOffsetTrayStuckPlace)
@@ -3009,34 +3038,40 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
         // Without Feature_TaskbarJumplistOnHover (48980211)
         // 01 38 40 F9 07 00 07 91
         // ----------- ^^^^^^^^^^^
-        // If this matches then the offset of m_rcWorkArea is +0x200
+        //   ADD             X7, X??, #0x???
+        //     P: 10010001_00_000000000000_00000_00111 = 91000007 = 07 00 00 91
+        //     M: 11111111_11_000000000000_00000_11111 = FFC0001F = 1F 00 C0 FF
         // Ref: CJumpViewExperienceManager::OnViewCloaking()
-        matchOffsetRcWorkArea = (PBYTE)FindPattern_4_(
+        matchOffsetRcWorkArea = (PBYTE)FindPatternBitMask_4_(
             matchOffsetTrayStuckPlace + 38,
             128,
-            "\x01\x38\x40\xF9\x07\x00\x07\x91",
-            "xxxxxxxx"
+            "\x01\x38\x40\xF9\x07\x00\x00\x91",
+            "\xFF\xFF\xFF\xFF\x1F\x00\xC0\xFF",
+            8
         );
         if (matchOffsetRcWorkArea)
         {
-            g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x200;
+            g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
         }
         if (!matchOffsetRcWorkArea)
         {
             // With Feature_TaskbarJumplistOnHover (48980211)
-            // 22 01 03 32 67 32 07 91
-            //             ^^^^^^^^^^^
-            // If this matches then the offset of m_rcWorkArea is +0x20C
+            // 61 3A 40 F9 22 01 03 32 67 32 07 91
+            // -----------             ^^^^^^^^^^^
+            //   ADD             X7, X??, #0x???
+            //     P: 10010001_00_000000000000_00000_00111 = 91000007 = 07 00 00 91
+            //     M: 11111111_11_000000000000_00000_11111 = FFC0001F = 1F 00 C0 FF
             // Ref: CJumpViewExperienceManager::OnViewCloaking()
-            matchOffsetRcWorkArea = (PBYTE)FindPattern_4_(
+            matchOffsetRcWorkArea = (PBYTE)FindPatternBitMask_4_(
                 matchOffsetTrayStuckPlace + 38,
                 128,
-                "\x22\x01\x03\x32\x67\x32\x07\x91",
-                "xxxxxxxx"
+                "\x61\x3A\x40\xF9\x22\x01\x03\x32\x07\x00\x00\x91",
+                "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x1F\x00\xC0\xFF",
+                12
             );
             if (matchOffsetRcWorkArea)
             {
-                g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x20C;
+                g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
             }
         }
     }

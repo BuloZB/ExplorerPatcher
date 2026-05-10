@@ -1169,6 +1169,14 @@ __forceinline DWORD ARM64_DecodeLDRBIMM(DWORD insnLDRBIMM)
     return imm12;
 }
 
+__forceinline DWORD ARM64_DecodeLDRIMMW(DWORD insnLDRIMMW)
+{
+    if (ARM64_ReadBits(insnLDRIMMW, 31, 22) != 0b1011100101)
+        return (DWORD)-1;
+    DWORD imm12 = ARM64_ReadBits(insnLDRIMMW, 21, 10);
+    return imm12;
+}
+
 inline UINT_PTR ARM64_DecodeADRL(UINT_PTR offset, DWORD insnADRP, DWORD insnADD)
 {
     if (!ARM64_IsADRP(insnADRP))
