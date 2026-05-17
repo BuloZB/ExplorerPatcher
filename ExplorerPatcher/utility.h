@@ -1383,6 +1383,18 @@ inline HMODULE LoadGuiModule()
     return LoadLibraryExW(epGuiPath, NULL, LOAD_LIBRARY_AS_DATAFILE);
 }
 
+/*MIDL_INTERFACE("e329db7a-e2f4-4d74-f1b5-9d75b80a5e46")
+IStartLayoutResolver : IUnknown
+{
+}*/
+
+DEFINE_GUID(IID_IStartLayoutResolver, 0xE329DB7A, 0xE2F4, 0x4D74, 0xF1, 0xB5, 0x9D, 0x75, 0xB8, 0x0A, 0x5E, 0x46);
+
+/*class DECLSPEC_UUID("7bd7ab1c-f2c5-60c2-8d00-c2e50336a954")
+StartLayoutFactory;*/
+
+DEFINE_GUID(CLSID_StartLayoutFactory, 0x7BD7AB1C, 0xF2C5, 0x60C2, 0x8D, 0x00, 0xC2, 0xE5, 0x03, 0x36, 0xA9, 0x54);
+
 inline BOOL DoesWindows10StartMenuExist()
 {
     if (!IsWindows11())
@@ -1391,15 +1403,46 @@ inline BOOL DoesWindows10StartMenuExist()
     wchar_t szPath[MAX_PATH];
     GetWindowsDirectoryW(szPath, MAX_PATH);
     wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI.dll");
-    if (FileExistsW(szPath))
-        return TRUE;
+    BOOL bRet = FileExistsW(szPath);
+    if (!bRet)
+    {
+        GetWindowsDirectoryW(szPath, MAX_PATH);
+        wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
+        bRet = FileExistsW(szPath);
+    }
 
-    GetWindowsDirectoryW(szPath, MAX_PATH);
-    wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
-    if (FileExistsW(szPath))
-        return TRUE;
+    if (bRet)
+    {
+#ifdef __cplusplus
+        IUnknown* pStartLayoutResolver;
+        HRESULT hr = CoCreateInstance(
+            CLSID_StartLayoutFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IStartLayoutResolver,
+            (void**)&pStartLayoutResolver);
+        if (SUCCEEDED(hr))
+        {
+            pStartLayoutResolver->Release();
+        }
+        else
+        {
+            bRet = FALSE;
+        }
+#else
+        IUnknown* pStartLayoutResolver;
+        HRESULT hr = CoCreateInstance(
+            &CLSID_StartLayoutFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IStartLayoutResolver,
+            (void**)&pStartLayoutResolver);
+        if (SUCCEEDED(hr))
+        {
+            pStartLayoutResolver->lpVtbl->Release(pStartLayoutResolver);
+        }
+        else
+        {
+            bRet = FALSE;
+        }
+#endif
+    }
 
-    return FALSE;
+    return bRet;
 }
 
 inline BOOL IsStockWindows10TaskbarAvailable()
