@@ -2068,6 +2068,14 @@ INT64 Shell_TrayWndSubclassProc(
             }
             break;
         }
+        case 0x5C3: // Stuck place / monitor change
+        {
+            if (bIsPrimaryTaskbar)
+            {
+                UpdateStartMenuPositioning(MAKELPARAM(TRUE, FALSE));
+            }
+            break;
+        }
     }
 
     if (uMsg >= 0xC000 && uMsg <= 0xFFFF && uMsg == RegisterWindowMessageW(L"Windows11ContextMenu_" _T(EP_CLSID)))
@@ -9596,6 +9604,7 @@ DWORD InjectBasicFunctions(BOOL bIsExplorer, BOOL bInstall)
         if (bInstall)
         {
             SHRegGetValueFromHKCUHKLMFunc = GetProcAddress(hShlwapi, "SHRegGetValueFromHKCUHKLM");
+            SHRegGetBoolValueFromHKCUHKLMFunc = GetProcAddress(hShlwapi, "SHRegGetBoolValueFromHKCUHKLM");
         }
         else
         {
@@ -11925,7 +11934,7 @@ INT64 StartDocked_StartSizingFrame_StartSizingFrameHook(void* _this)
     if (hModule)
     {
         DWORD dwStatus = 0, dwSize = sizeof(DWORD);
-        t_SHRegGetValueFromHKCUHKLM SHRegGetValueFromHKCUHKLMFunc = GetProcAddress(hModule, "SHRegGetValueFromHKCUHKLM");
+        SHRegGetValueFromHKCUHKLM_t SHRegGetValueFromHKCUHKLMFunc = GetProcAddress(hModule, "SHRegGetValueFromHKCUHKLM");
         if (!SHRegGetValueFromHKCUHKLMFunc || SHRegGetValueFromHKCUHKLMFunc(
             TEXT("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"),
             TEXT("TaskbarAl"),
@@ -12873,7 +12882,7 @@ DWORD InjectStartMenu()
     if (hModule)
     {
         DWORD dwStatus = 0, dwSize = sizeof(DWORD);
-        t_SHRegGetValueFromHKCUHKLM SHRegGetValueFromHKCUHKLM = GetProcAddress(hModule, "SHRegGetValueFromHKCUHKLM");
+        SHRegGetValueFromHKCUHKLM_t SHRegGetValueFromHKCUHKLM = GetProcAddress(hModule, "SHRegGetValueFromHKCUHKLM");
 
         if (SHRegGetValueFromHKCUHKLM)
         {

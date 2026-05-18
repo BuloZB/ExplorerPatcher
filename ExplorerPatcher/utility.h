@@ -142,7 +142,7 @@ __declspec(dllexport) int CALLBACK ZZRestartExplorer(HWND hWnd, HINSTANCE hInsta
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
-typedef LSTATUS(*t_SHRegGetValueFromHKCUHKLM)(
+typedef LSTATUS (*SHRegGetValueFromHKCUHKLM_t)(
     PCWSTR pwszKey,
     PCWSTR pwszValue,
     int/*SRRF*/ srrfFlags,
@@ -150,7 +150,10 @@ typedef LSTATUS(*t_SHRegGetValueFromHKCUHKLM)(
     void* pvData,
     DWORD* pcbData
 );
-EP_INLINE t_SHRegGetValueFromHKCUHKLM SHRegGetValueFromHKCUHKLMFunc;
+EP_INLINE SHRegGetValueFromHKCUHKLM_t SHRegGetValueFromHKCUHKLMFunc;
+
+typedef BOOL (*SHRegGetBoolValueFromHKCUHKLM_t)(PCWSTR pszKey, PCWSTR pszValue, BOOL fDefault);
+EP_INLINE SHRegGetBoolValueFromHKCUHKLM_t SHRegGetBoolValueFromHKCUHKLMFunc;
 
 inline LSTATUS SHRegGetValueFromHKCUHKLMWithOpt(
     PCWSTR pwszKey,
