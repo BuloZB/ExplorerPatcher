@@ -9504,24 +9504,16 @@ HWND user32_NtUserFindWindowExHook(HWND hWndParent, HWND hWndChildAfter, LPCWSTR
 
 
 #pragma region "Infrastructure for reporting which OS features are enabled"
-#pragma pack(push, 1)
-struct RTL_FEATURE_CONFIGURATION {
-    unsigned int featureId;
-    unsigned __int32 group : 4;
-    unsigned __int32 enabledState : 2;
-    unsigned __int32 enabledStateOptions : 1;
-    unsigned __int32 unused1 : 1;
-    unsigned __int32 variant : 6;
-    unsigned __int32 variantPayloadKind : 2;
-    unsigned __int32 unused2 : 16;
-    unsigned int payload;
-};
-#pragma pack(pop)
 
-int (*RtlQueryFeatureConfigurationFunc)(UINT32 featureId, int sectionType, INT64* changeStamp, struct RTL_FEATURE_CONFIGURATION* buffer);
-int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* changeStamp, struct RTL_FEATURE_CONFIGURATION* buffer) {
-    int rv = RtlQueryFeatureConfigurationFunc(featureId, sectionType, changeStamp, buffer);
-    switch (featureId)
+#include "inc/rtlfeatureconfig.h"
+
+RTL_QUERY_FEATURE_CONFIGURATION* RtlQueryFeatureConfigurationFunc;
+NTSTATUS NTAPI RtlQueryFeatureConfigurationHook(
+    RTL_FEATURE_ID FeatureId, RTL_FEATURE_CONFIGURATION_TYPE ConfigurationType, RTL_FEATURE_CHANGE_STAMP* ChangeStamp,
+    RTL_FEATURE_CONFIGURATION* FeatureConfiguration)
+{
+    NTSTATUS rv = RtlQueryFeatureConfigurationFunc(FeatureId, ConfigurationType, ChangeStamp, FeatureConfiguration);
+    switch (FeatureId)
     {
 #if !USE_MOMENT_3_FIXES_ON_MOMENT_2
         case 26008830: // STTest
@@ -9536,7 +9528,7 @@ int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* c
                 //
                 // Removed in 22621.2134+
                 //
-                buffer->enabledState = FEATURE_ENABLED_STATE_DISABLED;
+                FeatureConfiguration->EnabledState = FeatureEnabledStateDisabled;
             }
             break;
         }
@@ -9549,7 +9541,7 @@ int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* c
                 // Crashing on 22635.2915
                 if ((global_rovi.dwBuildNumber >= 22621 && global_rovi.dwBuildNumber <= 22635) && global_ubr >= 2915)
                     break;
-                buffer->enabledState = FEATURE_ENABLED_STATE_DISABLED;
+                FeatureConfiguration->EnabledState = FeatureEnabledStateDisabled;
             }
             break;
         }
@@ -9562,7 +9554,7 @@ int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* c
                 // Crashing on 22635.2915
                 if ((global_rovi.dwBuildNumber >= 22621 && global_rovi.dwBuildNumber <= 22635) && global_ubr >= 2915)
                     break;
-                buffer->enabledState = FEATURE_ENABLED_STATE_DISABLED;
+                FeatureConfiguration->EnabledState = FeatureEnabledStateDisabled;
             }
             break;
         }
@@ -9572,7 +9564,7 @@ int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* c
             if (bOldTaskbar)
             {
                 // Sorry Microsoft, but we need more time. Peace ✌️
-                buffer->enabledState = FEATURE_ENABLED_STATE_DISABLED;
+                FeatureConfiguration->EnabledState = FeatureEnabledStateDisabled;
             }
             break;
         }
@@ -9584,7 +9576,7 @@ int RtlQueryFeatureConfigurationHook(UINT32 featureId, int sectionType, INT64* c
                 // This feature flag when enabled makes the flyouts disregard the left and right offsets, so that they
                 // appear over the Copilot sidebar instead of beside it. Disabling this fixes start menu positioning
                 // when the taskbar is at the left or right side, but it will make that behavior occur again.
-                buffer->enabledState = FEATURE_ENABLED_STATE_DISABLED;
+                FeatureConfiguration->EnabledState = FeatureEnabledStateDisabled;
             }
             break;
         }
@@ -9775,7 +9767,7 @@ DWORD InjectBasicFunctions(BOOL bIsExplorer, BOOL bInstall)
     // As of writing, this function is never invoked with bInstall=TRUE, so we don't handle the case if it's false for now
     if (bIsExplorerProcess)
     {
-        RtlQueryFeatureConfigurationFunc = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlQueryFeatureConfiguration");
+        RtlQueryFeatureConfigurationFunc = (RTL_QUERY_FEATURE_CONFIGURATION*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlQueryFeatureConfiguration");
         int rv = -1;
         if (RtlQueryFeatureConfigurationFunc)
         {
@@ -11652,15 +11644,18 @@ void StartMenu_LoadSettings(BOOL bRestartIfChanged)
     }
     if (hKey)
     {
-        dwSize = sizeof(DWORD);
-        RegQueryValueExW(
-            hKey,
-            TEXT("MakeAllAppsDefault"),
-            0,
-            NULL,
-            &StartMenu_ShowAllApps,
-            &dwSize
-        );
+        if (!IsRedesignedWin11StartMenu())
+        {
+            dwSize = sizeof(DWORD);
+            RegQueryValueExW(
+                hKey,
+                TEXT("MakeAllAppsDefault"),
+                0,
+                NULL,
+                &StartMenu_ShowAllApps,
+                &dwSize
+            );
+        }
         dwSize = sizeof(DWORD);
         RegQueryValueExW(
             hKey,

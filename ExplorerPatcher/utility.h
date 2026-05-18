@@ -1246,6 +1246,9 @@ typedef struct _MonitorOverrideData
 BOOL ExtractMonitorByIndex(HMONITOR hMonitor, HDC hDC, LPRECT lpRect, MonitorOverrideData* mod);
 HRESULT SHRegGetBOOLWithREGSAM(HKEY key, LPCWSTR subKey, LPCWSTR value, REGSAM regSam, BOOL* data);
 HRESULT SHRegGetDWORD(HKEY hkey, const WCHAR* pwszSubKey, const WCHAR* pwszValue, DWORD* pdwData);
+VS_FIXEDFILEINFO* GetModuleVersionInfo(HMODULE hModule, UINT* puPtrLen);
+BOOL IsOsFeatureEnabled(UINT featureId, BOOL bEnabledByDefault);
+BOOL IsRedesignedWin11StartMenu();
 
 FORCEINLINE BOOL _MaskCompareByteLevel(PVOID pvSearch, LPCSTR pszPattern, LPCSTR pszMask)
 {
