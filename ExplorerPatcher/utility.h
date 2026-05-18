@@ -1383,13 +1383,6 @@ inline HMODULE LoadGuiModule()
     return LoadLibraryExW(epGuiPath, NULL, LOAD_LIBRARY_AS_DATAFILE);
 }
 
-/*MIDL_INTERFACE("e329db7a-e2f4-4d74-f1b5-9d75b80a5e46")
-IStartLayoutResolver : IUnknown
-{
-}*/
-
-DEFINE_GUID(IID_IStartLayoutResolver, 0xE329DB7A, 0xE2F4, 0x4D74, 0xF1, 0xB5, 0x9D, 0x75, 0xB8, 0x0A, 0x5E, 0x46);
-
 /*class DECLSPEC_UUID("7bd7ab1c-f2c5-60c2-8d00-c2e50336a954")
 StartLayoutFactory;*/
 
@@ -1413,33 +1406,37 @@ inline BOOL DoesWindows10StartMenuExist()
 
     if (bRet)
     {
+        bRet = FALSE;
+
+        HMODULE hStartTileData = LoadLibraryExW(L"StartTileData.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (hStartTileData)
+        {
+            typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+            DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hStartTileData, "DllGetClassObject");
+
+            if (pfnDllGetClassObject)
+            {
 #ifdef __cplusplus
-        IUnknown* pStartLayoutResolver;
-        HRESULT hr = CoCreateInstance(
-            CLSID_StartLayoutFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IStartLayoutResolver,
-            (void**)&pStartLayoutResolver);
-        if (SUCCEEDED(hr))
-        {
-            pStartLayoutResolver->Release();
-        }
-        else
-        {
-            bRet = FALSE;
-        }
+                IClassFactory* pFactory;
+                HRESULT hr = pfnDllGetClassObject(CLSID_StartLayoutFactory, IID_PPV_ARGS(&pFactory));
+                if (SUCCEEDED(hr))
+                {
+                    bRet = TRUE;
+                    pFactory->Release();
+                }
 #else
-        IUnknown* pStartLayoutResolver;
-        HRESULT hr = CoCreateInstance(
-            &CLSID_StartLayoutFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IStartLayoutResolver,
-            (void**)&pStartLayoutResolver);
-        if (SUCCEEDED(hr))
-        {
-            pStartLayoutResolver->lpVtbl->Release(pStartLayoutResolver);
-        }
-        else
-        {
-            bRet = FALSE;
-        }
+                IClassFactory* pFactory;
+                HRESULT hr = pfnDllGetClassObject(&CLSID_StartLayoutFactory, &IID_IClassFactory, (void**)&pFactory);
+                if (SUCCEEDED(hr))
+                {
+                    bRet = TRUE;
+                    pFactory->lpVtbl->Release(pFactory);
+                }
 #endif
+            }
+
+            FreeLibrary(hStartTileData);
+        }
     }
 
     return bRet;
