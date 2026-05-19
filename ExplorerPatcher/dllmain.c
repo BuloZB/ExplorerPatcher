@@ -10321,14 +10321,16 @@ EP_TASKBAR_FEATURES GetEPTaskbarFeatures()
         eptf |= EPTF_Taskbar;
     }
 
-    BOOL fValue = FALSE;
-    if (SUCCEEDED(SHRegGetBOOLWithREGSAM(HKEY_CURRENT_USER, L"Software\\ExplorerPatcher", L"UseImmersiveLauncher", 0, &fValue)) && fValue)
+    DWORD dwValue = 0;
+    if (SUCCEEDED(SHRegGetDWORD(HKEY_CURRENT_USER, L"Software\\ExplorerPatcher", L"CustomStart_Primary", &dwValue))
+        && dwValue >= 1 && dwValue <= 3)
     {
         eptf |= EPTF_WinBlueLauncher;
     }
 
-    DWORD dwValue = 0;
-    if (SUCCEEDED(SHRegGetDWORD(HKEY_CURRENT_USER, L"Software\\ExplorerPatcher", L"AudioFlyoutStyle", &dwValue)) && dwValue == 1)
+    dwValue = 0;
+    if (SUCCEEDED(SHRegGetDWORD(HKEY_CURRENT_USER, L"Software\\ExplorerPatcher", L"AudioFlyoutStyle", &dwValue))
+        && dwValue == 1)
     {
         eptf |= EPTF_AudioFlyout;
     }
