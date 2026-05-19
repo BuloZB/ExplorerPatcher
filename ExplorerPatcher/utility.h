@@ -1396,56 +1396,65 @@ DEFINE_GUID(CLSID_StartLayoutFactory, 0x7BD7AB1C, 0xF2C5, 0x60C2, 0x8D, 0x00, 0x
 
 inline BOOL DoesWindows10StartMenuExist()
 {
-    if (!IsWindows11())
-        return TRUE;
-
-    wchar_t szPath[MAX_PATH];
-    GetWindowsDirectoryW(szPath, MAX_PATH);
-    wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI.dll");
-    BOOL bRet = FileExistsW(szPath);
-    if (!bRet)
+    static BOOL s_tbWindows10StartMenuExists; // UNDEFINED, TRUE, FALSE
+    if (s_tbWindows10StartMenuExists == 0)
     {
-        GetWindowsDirectoryW(szPath, MAX_PATH);
-        wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
-        bRet = FileExistsW(szPath);
-    }
-
-    if (bRet)
-    {
-        bRet = FALSE;
-
-        HMODULE hStartTileData = LoadLibraryExW(L"StartTileData.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if (hStartTileData)
+        if (!IsWindows11())
         {
-            typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
-            DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hStartTileData, "DllGetClassObject");
-
-            if (pfnDllGetClassObject)
-            {
-#ifdef __cplusplus
-                IClassFactory* pFactory;
-                HRESULT hr = pfnDllGetClassObject(CLSID_StartLayoutFactory, IID_PPV_ARGS(&pFactory));
-                if (SUCCEEDED(hr))
-                {
-                    bRet = TRUE;
-                    pFactory->Release();
-                }
-#else
-                IClassFactory* pFactory;
-                HRESULT hr = pfnDllGetClassObject(&CLSID_StartLayoutFactory, &IID_IClassFactory, (void**)&pFactory);
-                if (SUCCEEDED(hr))
-                {
-                    bRet = TRUE;
-                    pFactory->lpVtbl->Release(pFactory);
-                }
-#endif
-            }
-
-            FreeLibrary(hStartTileData);
+            s_tbWindows10StartMenuExists = 1;
+            return s_tbWindows10StartMenuExists;
         }
+
+        wchar_t szPath[MAX_PATH];
+        GetWindowsDirectoryW(szPath, MAX_PATH);
+        wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI.dll");
+        BOOL bRet = FileExistsW(szPath);
+        if (!bRet)
+        {
+            GetWindowsDirectoryW(szPath, MAX_PATH);
+            wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
+            bRet = FileExistsW(szPath);
+        }
+
+        if (bRet)
+        {
+            bRet = FALSE;
+
+            HMODULE hStartTileData = LoadLibraryExW(L"StartTileData.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if (hStartTileData)
+            {
+                typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+                DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hStartTileData, "DllGetClassObject");
+
+                if (pfnDllGetClassObject)
+                {
+#ifdef __cplusplus
+                    IClassFactory* pFactory;
+                    HRESULT hr = pfnDllGetClassObject(CLSID_StartLayoutFactory, IID_PPV_ARGS(&pFactory));
+                    if (SUCCEEDED(hr))
+                    {
+                        bRet = TRUE;
+                        pFactory->Release();
+                    }
+#else
+                    IClassFactory* pFactory;
+                    HRESULT hr = pfnDllGetClassObject(&CLSID_StartLayoutFactory, &IID_IClassFactory, (void**)&pFactory);
+                    if (SUCCEEDED(hr))
+                    {
+                        bRet = TRUE;
+                        pFactory->lpVtbl->Release(pFactory);
+                    }
+#endif
+                }
+
+                FreeLibrary(hStartTileData);
+            }
+        }
+
+        s_tbWindows10StartMenuExists = bRet ? 1 : 2;
     }
 
-    return bRet;
+    return s_tbWindows10StartMenuExists == 1;
 }
 
 inline BOOL IsStockWindows10TaskbarAvailable()
