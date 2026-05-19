@@ -3229,6 +3229,22 @@ void TryToFindTwinuiPCShellOffsets(DWORD* pOffsets)
                 match += 4;
                 pOffsets[0] = (DWORD)(match + 5 + *(int*)(match + 1) - pFile);
             }
+            else
+            {
+                // 48 8B 49 08 E8 ?? ?? ?? ?? 44 8A ?? E9 ?? ?? ?? ?? 48 8B 89
+                //                ^^^^^^^^^^^
+                // Ref: CMultitaskingViewFrame::v_WndProc()
+                match = (PBYTE)FindPattern(
+                    pSearchBegin, cbSearch,
+                    "\x48\x8B\x49\x08\xE8\x00\x00\x00\x00\x44\x8A\x00\xE9\x00\x00\x00\x00\x48\x8B\x89",
+                    "xxxxx????xx?x????xxx"
+                );
+                if (match)
+                {
+                    match += 4;
+                    pOffsets[0] = (DWORD)(match + 5 + *(int*)(match + 1) - pFile);
+                }
+            }
 #elif defined(_M_ARM64)
             // ?? ?? 00 71 ?? ?? 00 54 ?? ?? 40 F9 E3 03 ?? AA E2 03 ?? AA E1 03 ?? 2A ?? ?? ?? ??
             //                                                                         ^^^^^^^^^^^
