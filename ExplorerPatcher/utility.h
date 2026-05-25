@@ -142,7 +142,7 @@ __declspec(dllexport) int CALLBACK ZZRestartExplorer(HWND hWnd, HINSTANCE hInsta
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
-typedef LSTATUS(*t_SHRegGetValueFromHKCUHKLM)(
+typedef LSTATUS (*SHRegGetValueFromHKCUHKLM_t)(
     PCWSTR pwszKey,
     PCWSTR pwszValue,
     int/*SRRF*/ srrfFlags,
@@ -150,7 +150,10 @@ typedef LSTATUS(*t_SHRegGetValueFromHKCUHKLM)(
     void* pvData,
     DWORD* pcbData
 );
-EP_INLINE t_SHRegGetValueFromHKCUHKLM SHRegGetValueFromHKCUHKLMFunc;
+EP_INLINE SHRegGetValueFromHKCUHKLM_t SHRegGetValueFromHKCUHKLMFunc;
+
+typedef BOOL (*SHRegGetBoolValueFromHKCUHKLM_t)(PCWSTR pszKey, PCWSTR pszValue, BOOL fDefault);
+EP_INLINE SHRegGetBoolValueFromHKCUHKLM_t SHRegGetBoolValueFromHKCUHKLMFunc;
 
 inline LSTATUS SHRegGetValueFromHKCUHKLMWithOpt(
     PCWSTR pwszKey,
@@ -1169,6 +1172,14 @@ __forceinline DWORD ARM64_DecodeLDRBIMM(DWORD insnLDRBIMM)
     return imm12;
 }
 
+__forceinline DWORD ARM64_DecodeLDRIMMW(DWORD insnLDRIMMW)
+{
+    if (ARM64_ReadBits(insnLDRIMMW, 31, 22) != 0b1011100101)
+        return (DWORD)-1;
+    DWORD imm12 = ARM64_ReadBits(insnLDRIMMW, 21, 10);
+    return imm12;
+}
+
 inline UINT_PTR ARM64_DecodeADRL(UINT_PTR offset, DWORD insnADRP, DWORD insnADD)
 {
     if (!ARM64_IsADRP(insnADRP))
@@ -1235,6 +1246,9 @@ typedef struct _MonitorOverrideData
 BOOL ExtractMonitorByIndex(HMONITOR hMonitor, HDC hDC, LPRECT lpRect, MonitorOverrideData* mod);
 HRESULT SHRegGetBOOLWithREGSAM(HKEY key, LPCWSTR subKey, LPCWSTR value, REGSAM regSam, BOOL* data);
 HRESULT SHRegGetDWORD(HKEY hkey, const WCHAR* pwszSubKey, const WCHAR* pwszValue, DWORD* pdwData);
+VS_FIXEDFILEINFO* GetModuleVersionInfo(HMODULE hModule, UINT* puPtrLen);
+BOOL IsOsFeatureEnabled(UINT featureId, BOOL bEnabledByDefault);
+BOOL IsRedesignedWin11StartMenu();
 
 FORCEINLINE BOOL _MaskCompareByteLevel(PVOID pvSearch, LPCSTR pszPattern, LPCSTR pszMask)
 {
@@ -1375,23 +1389,72 @@ inline HMODULE LoadGuiModule()
     return LoadLibraryExW(epGuiPath, NULL, LOAD_LIBRARY_AS_DATAFILE);
 }
 
+/*class DECLSPEC_UUID("7bd7ab1c-f2c5-60c2-8d00-c2e50336a954")
+StartLayoutFactory;*/
+
+DEFINE_GUID(CLSID_StartLayoutFactory, 0x7BD7AB1C, 0xF2C5, 0x60C2, 0x8D, 0x00, 0xC2, 0xE5, 0x03, 0x36, 0xA9, 0x54);
+
 inline BOOL DoesWindows10StartMenuExist()
 {
-    if (!IsWindows11())
-        return TRUE;
+    static BOOL s_tbWindows10StartMenuExists; // UNDEFINED, TRUE, FALSE
+    if (s_tbWindows10StartMenuExists == 0)
+    {
+        if (!IsWindows11())
+        {
+            s_tbWindows10StartMenuExists = 1;
+            return s_tbWindows10StartMenuExists;
+        }
 
-    wchar_t szPath[MAX_PATH];
-    GetWindowsDirectoryW(szPath, MAX_PATH);
-    wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI.dll");
-    if (FileExistsW(szPath))
-        return TRUE;
+        wchar_t szPath[MAX_PATH];
+        GetWindowsDirectoryW(szPath, MAX_PATH);
+        wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI.dll");
+        BOOL bRet = FileExistsW(szPath);
+        if (!bRet)
+        {
+            GetWindowsDirectoryW(szPath, MAX_PATH);
+            wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
+            bRet = FileExistsW(szPath);
+        }
 
-    GetWindowsDirectoryW(szPath, MAX_PATH);
-    wcscat_s(szPath, MAX_PATH, L"\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartUI_.dll");
-    if (FileExistsW(szPath))
-        return TRUE;
+        if (bRet)
+        {
+            bRet = FALSE;
 
-    return FALSE;
+            HMODULE hStartTileData = LoadLibraryExW(L"StartTileData.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if (hStartTileData)
+            {
+                typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+                DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hStartTileData, "DllGetClassObject");
+
+                if (pfnDllGetClassObject)
+                {
+#ifdef __cplusplus
+                    IClassFactory* pFactory;
+                    HRESULT hr = pfnDllGetClassObject(CLSID_StartLayoutFactory, IID_PPV_ARGS(&pFactory));
+                    if (SUCCEEDED(hr))
+                    {
+                        bRet = TRUE;
+                        pFactory->Release();
+                    }
+#else
+                    IClassFactory* pFactory;
+                    HRESULT hr = pfnDllGetClassObject(&CLSID_StartLayoutFactory, &IID_IClassFactory, (void**)&pFactory);
+                    if (SUCCEEDED(hr))
+                    {
+                        bRet = TRUE;
+                        pFactory->lpVtbl->Release(pFactory);
+                    }
+#endif
+                }
+
+                FreeLibrary(hStartTileData);
+            }
+        }
+
+        s_tbWindows10StartMenuExists = bRet ? 1 : 2;
+    }
+
+    return s_tbWindows10StartMenuExists == 1;
 }
 
 inline BOOL IsStockWindows10TaskbarAvailable()

@@ -1141,6 +1141,8 @@ static BOOL GUI_Build(HDC hDC, HWND hwnd, POINT pt)
                 else if (!_stricmp(funcName, "IsWindows10StartMenu") && (!DoesWindows10StartMenuExist() || (dwRes = 0, RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", L"Start_ShowClassicMode", RRF_RT_DWORD, NULL, &dwRes, &dwSize), (dwRes != 1)))) bSkipLines = TRUE;
                 else if (!_stricmp(funcName, "!IsWindows10StartMenu") && (DoesWindows10StartMenuExist() && (dwRes = 0, RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", L"Start_ShowClassicMode", RRF_RT_DWORD, NULL, &dwRes, &dwSize), (dwRes == 1)))) bSkipLines = TRUE;
                 else if (!_stricmp(funcName, "DoesWindows10StartMenuExist") && !DoesWindows10StartMenuExist()) bSkipLines = TRUE;
+                else if (!_stricmp(funcName, "IsRedesignedWin11StartMenu") && !IsRedesignedWin11StartMenu()) bSkipLines = TRUE;
+                else if (!_stricmp(funcName, "!IsRedesignedWin11StartMenu") && IsRedesignedWin11StartMenu()) bSkipLines = TRUE;
                 else if (!_stricmp(funcName, "IsWeatherEnabled") && (dwRes = 0, RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People", L"PeopleBand", RRF_RT_DWORD, NULL, &dwRes, &dwSize), (dwRes != 1))) bSkipLines = TRUE;
                 else if (!_stricmp(funcName, "IsWindows11Version22H2OrHigher") && !IsWindows11Version22H2OrHigher()) bSkipLines = TRUE;
                 else if (!_stricmp(funcName, "!IsWindows11Version22H2OrHigher") && IsWindows11Version22H2OrHigher()) bSkipLines = TRUE;

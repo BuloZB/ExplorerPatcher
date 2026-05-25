@@ -1330,7 +1330,7 @@ int WINAPI wWinMain(
             if (CHECK_OK(bOk)) bOk = InstallResource(bInstall, hInstance, zipFile, "WebView2Loader.dll", wszPath, L"WebView2Loader.dll");
         }
         ProcessTaskbarDlls(&bOk, bInstall, FALSE, hInstance, zipFile, wszPath);
-        const WCHAR* possibleDirs[] =
+        const WCHAR* const possibleDirs[] =
         {
             L"ar-SA", L"bg-BG", L"ca-ES", L"cs-CZ", L"da-DK", L"de-DE", L"el-GR", L"en-GB", L"en-US", L"es-ES",
             L"es-MX", L"et-EE", L"eu-ES", L"fi-FI", L"fr-CA", L"fr-FR", L"gl-ES", L"he-IL", L"hr-HR", L"hu-HU",
