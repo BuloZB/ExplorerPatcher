@@ -12184,6 +12184,47 @@ LSTATUS StartUI_RegCloseKey(HKEY hKey)
     return RegCloseKey(hKey);
 }
 
+HRESULT StartUI_CoCreateInstanceHook(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID* ppv)
+{
+    if (IsEqualCLSID(rclsid, &CLSID_StartLayoutFactory))
+    {
+        if (dwStartShowClassicMode && IsWindows11())
+        {
+            WCHAR szPath[MAX_PATH];
+            SHGetFolderPathW(NULL, SPECIAL_FOLDER, NULL, SHGFP_TYPE_CURRENT, szPath);
+            wcscat_s(szPath, MAX_PATH, _T(APP_RELATIVE_PATH) L"\\ep_starttiledata.dll");
+
+            HMODULE hMyStartTileData = LoadLibraryW(szPath);
+            if (hMyStartTileData)
+            {
+                HRESULT hr = E_FAIL;
+
+                typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+                DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hMyStartTileData, "DllGetClassObject");
+                if (pfnDllGetClassObject)
+                {
+                    IClassFactory* pClassFactory = NULL;
+                    hr = pfnDllGetClassObject(rclsid, &IID_IClassFactory, (LPVOID*)&pClassFactory);
+                    if (SUCCEEDED(hr))
+                    {
+                        hr = pClassFactory->lpVtbl->CreateInstance(pClassFactory, pUnkOuter, riid, ppv);
+                        pClassFactory->lpVtbl->Release(pClassFactory);
+                    }
+                }
+
+                if (FAILED(hr))
+                {
+                    FreeLibrary(hMyStartTileData);
+                }
+
+                return hr;
+            }
+        }
+    }
+
+    return CoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
+}
+
 int Start_SetWindowRgn(HWND hWnd, HRGN hRgn, BOOL bRedraw)
 {
     WCHAR wszDebug[MAX_PATH];
@@ -12791,6 +12832,9 @@ DWORD InjectStartMenu()
 
         if (IsWindows11())
         {
+            // Use our tile layout engine (removed in 26xxx.8493+)
+            VnPatchIAT(hStartUI, "api-ms-win-core-com-l1-1-0.dll", "CoCreateInstance", StartUI_CoCreateInstanceHook);
+
             // Fixes Pin to Start/Unpin from Start
             PatchAppResolver();
             PatchStartTileData(TRUE);

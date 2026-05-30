@@ -1403,6 +1403,8 @@ int WINAPI wWinMain(
             }
         }
 
+        if (CHECK_OK(bOk)) bOk = InstallResource(bInstall && IsWindows11(), hInstance, zipFile, "ep_starttiledata.dll", wszPath, L"ep_starttiledata.dll");
+
         // --------------------------------------------------------------------------------
 
         // C:\Windows

@@ -1394,6 +1394,36 @@ StartLayoutFactory;*/
 
 DEFINE_GUID(CLSID_StartLayoutFactory, 0x7BD7AB1C, 0xF2C5, 0x60C2, 0x8D, 0x00, 0xC2, 0xE5, 0x03, 0x36, 0xA9, 0x54);
 
+inline BOOL TestClsidExists(HMODULE hModule, REFCLSID rclsid)
+{
+    BOOL bRet = FALSE;
+
+    typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+    DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hModule, "DllGetClassObject");
+    if (pfnDllGetClassObject)
+    {
+#ifdef __cplusplus
+        IClassFactory* pFactory;
+        HRESULT hr = pfnDllGetClassObject(rclsid, IID_PPV_ARGS(&pFactory));
+        if (SUCCEEDED(hr))
+        {
+            bRet = TRUE;
+            pFactory->Release();
+        }
+#else
+        IClassFactory* pFactory;
+        HRESULT hr = pfnDllGetClassObject(rclsid, &IID_IClassFactory, (void**)&pFactory);
+        if (SUCCEEDED(hr))
+        {
+            bRet = TRUE;
+            pFactory->lpVtbl->Release(pFactory);
+        }
+#endif
+    }
+
+    return bRet;
+}
+
 inline BOOL DoesWindows10StartMenuExist()
 {
     static BOOL s_tbWindows10StartMenuExists; // UNDEFINED, TRUE, FALSE
@@ -1423,28 +1453,26 @@ inline BOOL DoesWindows10StartMenuExist()
             HMODULE hStartTileData = LoadLibraryExW(L"StartTileData.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
             if (hStartTileData)
             {
-                typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
-                DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hStartTileData, "DllGetClassObject");
-
-                if (pfnDllGetClassObject)
-                {
 #ifdef __cplusplus
-                    IClassFactory* pFactory;
-                    HRESULT hr = pfnDllGetClassObject(CLSID_StartLayoutFactory, IID_PPV_ARGS(&pFactory));
-                    if (SUCCEEDED(hr))
-                    {
-                        bRet = TRUE;
-                        pFactory->Release();
-                    }
+                bRet = TestClsidExists(hStartTileData, CLSID_StartLayoutFactory);
 #else
-                    IClassFactory* pFactory;
-                    HRESULT hr = pfnDllGetClassObject(&CLSID_StartLayoutFactory, &IID_IClassFactory, (void**)&pFactory);
-                    if (SUCCEEDED(hr))
-                    {
-                        bRet = TRUE;
-                        pFactory->lpVtbl->Release(pFactory);
-                    }
+                bRet = TestClsidExists(hStartTileData, &CLSID_StartLayoutFactory);
 #endif
+                if (!bRet)
+                {
+                    SHGetFolderPathW(NULL, SPECIAL_FOLDER, NULL, SHGFP_TYPE_CURRENT, szPath);
+                    wcscat_s(szPath, MAX_PATH, _T(APP_RELATIVE_PATH) L"\\ep_starttiledata.dll");
+
+                    HMODULE hMyStartTileData = LoadLibraryW(szPath);
+                    if (hMyStartTileData)
+                    {
+#ifdef __cplusplus
+                        bRet = TestClsidExists(hMyStartTileData, CLSID_StartLayoutFactory);
+#else
+                        bRet = TestClsidExists(hMyStartTileData, &CLSID_StartLayoutFactory);
+#endif
+                        FreeLibrary(hMyStartTileData);
+                    }
                 }
 
                 FreeLibrary(hStartTileData);
