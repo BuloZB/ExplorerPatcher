@@ -66,12 +66,17 @@ DEFINE_GUID(CLSID_NetworkListManager,
 DEFINE_GUID(IID_NetworkListManager,
     0xDCB00000, 0x570F, 0x4A9B, 0x8D, 0x69, 0x19, 0x9F, 0xDB, 0xA5, 0x72, 0x3B);
 
-typedef struct _StuckRectsData
+typedef struct _TVSD
 {
-    int pvData[6];
-    RECT rc;
-    POINT pt;
-} StuckRectsData;
+    DWORD dwSize;
+    LONG lSignature;
+    DWORD dwFlags;
+    UINT uStuckPlace;
+    SIZE sStuckWidths;
+    RECT rcLastStuck;
+    UINT uLastDpi;
+    int iRowCount;
+} TVSD;
 
 HRESULT FindDesktopFolderView(REFIID riid, void** ppv);
 

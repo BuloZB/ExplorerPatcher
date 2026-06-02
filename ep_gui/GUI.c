@@ -249,8 +249,8 @@ LSTATUS GUI_Internal_RegSetValueExW(
         }
         else
         {
-            StuckRectsData srd;
-            DWORD pcbData = sizeof(StuckRectsData);
+            TVSD srd;
+            DWORD pcbData = sizeof(TVSD);
             RegGetValueW(
                 HKEY_CURRENT_USER,
                 L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StuckRectsLegacy",
@@ -259,9 +259,9 @@ LSTATUS GUI_Internal_RegSetValueExW(
                 NULL,
                 &srd,
                 &pcbData);
-            if (pcbData == sizeof(StuckRectsData) && srd.pvData[0] == sizeof(StuckRectsData) && srd.pvData[1] == -2)
+            if (pcbData == sizeof(TVSD) && srd.dwSize == sizeof(TVSD) && srd.lSignature == -2)
             {
-                srd.pvData[3] = *(DWORD*)lpData;
+                srd.uStuckPlace = *(DWORD*)lpData;
                 dwTaskbarPosition = *(DWORD*)lpData;
                 RegSetKeyValueW(
                     HKEY_CURRENT_USER,
@@ -269,7 +269,7 @@ LSTATUS GUI_Internal_RegSetValueExW(
                     L"Settings",
                     REG_BINARY,
                     &srd,
-                    sizeof(StuckRectsData)
+                    sizeof(TVSD)
                 );
             }
         }
@@ -304,8 +304,8 @@ LSTATUS GUI_Internal_RegSetValueExW(
             );
             WCHAR name[60];
             DWORD szName = 60;
-            StuckRectsData srd;
-            DWORD pcbData = sizeof(StuckRectsData);
+            TVSD srd;
+            DWORD pcbData = sizeof(TVSD);
             for (int i = 0; i < cValues; ++i)
             {
                 RegEnumValueW(
@@ -319,15 +319,15 @@ LSTATUS GUI_Internal_RegSetValueExW(
                     &pcbData
                 );
                 szName = 60;
-                srd.pvData[3] = *(DWORD*)lpData;
-                pcbData = sizeof(StuckRectsData);
+                srd.uStuckPlace = *(DWORD*)lpData;
+                pcbData = sizeof(TVSD);
                 RegSetKeyValueW(
                     HKEY_CURRENT_USER,
                     L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MMStuckRectsLegacy",
                     name,
                     REG_BINARY,
                     &srd,
-                    sizeof(StuckRectsData)
+                    sizeof(TVSD)
                 );
             }
             RegCloseKey(hKeyStuckRectsLegacy);
@@ -559,8 +559,8 @@ LSTATUS GUI_Internal_RegQueryValueExW(
         }
         else
         {
-            StuckRectsData srd;
-            DWORD pcbData = sizeof(StuckRectsData);
+            TVSD srd;
+            DWORD pcbData = sizeof(TVSD);
             RegGetValueW(
                 HKEY_CURRENT_USER,
                 L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StuckRectsLegacy",
@@ -569,9 +569,9 @@ LSTATUS GUI_Internal_RegQueryValueExW(
                 NULL,
                 &srd,
                 &pcbData);
-            if (pcbData == sizeof(StuckRectsData) && srd.pvData[0] == sizeof(StuckRectsData) && srd.pvData[1] == -2)
+            if (pcbData == sizeof(TVSD) && srd.dwSize == sizeof(TVSD) && srd.lSignature == -2)
             {
-                dwTaskbarPosition = *(DWORD*)lpData = srd.pvData[3];
+                dwTaskbarPosition = *(DWORD*)lpData = srd.uStuckPlace;
             }
             else
             {
@@ -601,8 +601,8 @@ LSTATUS GUI_Internal_RegQueryValueExW(
         {
             WCHAR name[60];
             DWORD szName = 60;
-            StuckRectsData srd;
-            DWORD pcbData = sizeof(StuckRectsData);
+            TVSD srd;
+            DWORD pcbData = sizeof(TVSD);
             RegEnumValueW(
                 hKey,
                 0,
@@ -613,16 +613,16 @@ LSTATUS GUI_Internal_RegQueryValueExW(
                 &srd,
                 &pcbData
             );
-            if (pcbData == sizeof(StuckRectsData) && srd.pvData[0] == sizeof(StuckRectsData) && srd.pvData[1] == -2)
+            if (pcbData == sizeof(TVSD) && srd.dwSize == sizeof(TVSD) && srd.lSignature == -2)
             {
                 if (GUI_TaskbarStyle == 0)
                 {
-                    if (srd.pvData[3] != 1 && srd.pvData[3] != 3) // Disallow left/right settings for Windows 11 taskbar, as this breaks it
+                    if (srd.uStuckPlace != 1 && srd.uStuckPlace != 3) // Disallow left/right settings for Windows 11 taskbar, as this breaks it
                     {
-                        srd.pvData[3] = 3;
+                        srd.uStuckPlace = 3;
                     }
                 }
-                *(DWORD*)lpData = srd.pvData[3];
+                *(DWORD*)lpData = srd.uStuckPlace;
                 RegCloseKey(hKey);
                 return ERROR_SUCCESS;
             }

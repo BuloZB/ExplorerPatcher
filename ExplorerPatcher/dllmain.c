@@ -8782,8 +8782,8 @@ BOOL explorer_SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
 
     bTaskbarSet = TRUE;
     
-    StuckRectsData srd;
-    DWORD pcbData = sizeof(StuckRectsData);
+    TVSD srd;
+    DWORD pcbData = sizeof(TVSD);
     RegGetValueW(
         HKEY_CURRENT_USER,
         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StuckRectsLegacy",
@@ -8793,22 +8793,12 @@ BOOL explorer_SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
         &srd,
         &pcbData);
 
-    if (pcbData != sizeof(StuckRectsData))
+    if (pcbData != sizeof(TVSD) || srd.dwSize != sizeof(TVSD) || srd.lSignature != -2)
     {
         return SetRect(lprc, xLeft, yTop, xRight, yBottom);
     }
 
-    if (srd.pvData[0] != sizeof(StuckRectsData))
-    {
-        return SetRect(lprc, xLeft, yTop, xRight, yBottom);
-    }
-
-    if (srd.pvData[1] != -2)
-    {
-        return SetRect(lprc, xLeft, yTop, xRight, yBottom);
-    }
-
-    HMONITOR hMonitor = MonitorFromRect(&(srd.rc), MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR hMonitor = MonitorFromRect(&(srd.rcLastStuck), MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi;
     ZeroMemory(&mi, sizeof(MONITORINFO));
     mi.cbSize = sizeof(MONITORINFO);
