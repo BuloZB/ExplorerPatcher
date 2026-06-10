@@ -13099,6 +13099,24 @@ HRESULT EntryPoint(DWORD dwMethod)
     );
     CloseHandle(hProcess);
 
+    // Application blacklist for loading shell extension (https://github.com/valinet/ExplorerPatcher/issues/4819)
+    static const WCHAR* const c_rgApplicationBlacklist[] =
+    {
+        L"mpc-hc",
+        L"mpc-be",
+        L"powertoys",
+        L"vlc.exe",
+        L"mpv.exe",
+        L"DisplayFusion.exe", // Crash when writing a VirtualProtect-ed region in PatchAddressBarSizing()
+    };
+    for (size_t i = 0; i < ARRAYSIZE(c_rgApplicationBlacklist); ++i)
+    {
+        if (StrStrIW(exePath, c_rgApplicationBlacklist[i]))
+        {
+            return E_NOINTERFACE;
+        }
+    }
+
     TCHAR wszSearchIndexerPath[MAX_PATH];
     GetSystemDirectoryW(wszSearchIndexerPath, MAX_PATH);
     wcscat_s(wszSearchIndexerPath, MAX_PATH, L"\\SearchIndexer.exe");
