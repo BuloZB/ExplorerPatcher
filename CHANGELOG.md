@@ -30,6 +30,17 @@ Tested on OS builds 22621.4317, 22631.7079, 26100.6899, 26100.8037, 26200.8246, 
 * [For mod developers] Changed ep_taskbar's DLL names from numbers to the codename of the first major release a single variant supports. (cc36e34)
 * [For mod developers] TrayUI no longer inherits `Microsoft::WRL::RuntimeClass`; vtables are now stable on builds with multiple `ITrayUI` revisions like `ep_taskbar.ge.dll` (formerly `ep_taskbar.5.dll`).
 
+##### 2
+
+* Introduced a reimplemented 10 Start menu tile layout engine that was removed in 26xxx.8474. (688514f)
+  * **Note that the restoration is partial.** Tiles can overlap when pinned not by dragging from apps list; this can be worked around by restarting `StartMenuExperienceHost.exe` or `explorer.exe` as a whole to repair the layout.
+  * Stay tuned on #4960 and the Discord server for updates.
+* Added an executable name blacklist to prevent shell extension from loading in certain applications. (#4819) (991b8ca)
+* Updated 10 Start menu animation patterns for 28xxx.2149+ ARM64. (c480fc2)
+
+**ep_taskbar:**
+* Fixed a deadlock relating to base EP reporting taskbar position and the taskbar reporting search/task view button location and size both to `WindowsUdk.ShellCommon.dll` during taskbar initialization.
+
 ## 26100.4946.69
 
 Tested on OS builds 26100.4946, 26100.5074, 26200.5751, and 26220.6682.
