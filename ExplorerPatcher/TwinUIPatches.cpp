@@ -1533,6 +1533,7 @@ BOOL Moment2PatchHardwareConfirmator(HMODULE hHardwareConfirmator, PBYTE pSearch
     {
         cleanupBegin = match2 + 17;
         cleanupEnd = match2 + 38; // Exclusive
+        if (cleanupBegin >= pSearchBegin + cbSearch || cleanupEnd >= pSearchBegin + cbSearch) return FALSE;
         printf("[HC] cleanup = %llX-%llX\n", cleanupBegin - (PBYTE)hHardwareConfirmator, cleanupEnd - (PBYTE)hHardwareConfirmator);
         if (*cleanupBegin != 0x49 || *cleanupEnd != 0x90 /*Already NOP here*/) return FALSE;
     }
@@ -1553,6 +1554,7 @@ BOOL Moment2PatchHardwareConfirmator(HMODULE hHardwareConfirmator, PBYTE pSearch
     // Execution
     DWORD dwOldProtect = 0;
     SIZE_T totalSize = sizeof(shellcode) + 5;
+    if (writeAt + totalSize >= pSearchBegin + cbSearch) return FALSE;
     if (!VirtualProtect(writeAt, totalSize, PAGE_EXECUTE_READWRITE, &dwOldProtect)) return FALSE;
     memcpy(writeAt, shellcode, sizeof(shellcode));
     PBYTE jmpLoc = writeAt + sizeof(shellcode);
