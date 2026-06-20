@@ -41,6 +41,12 @@ Tested on OS builds 22621.4317, 22631.7079, 26100.6899, 26100.8037, 26200.8246, 
 **ep_taskbar:**
 * Fixed a deadlock relating to base EP reporting taskbar position and the taskbar reporting search/task view button location and size both to `WindowsUdk.ShellCommon.dll` during taskbar initialization.
 
+##### 3
+
+* Start10: Mitigated a new breakage related to removal of tablet mode code currently being rolled out on 25H2 Experimental builds 8553, 8687, 8697, and beyond. Thanks @AllieTheFox! (94cc68e)
+* Start10: Pinned tiles are no longer reset after 5 consecutive crashes. Thanks @AllieTheFox! (cc85aaf)
+* GUI: Fixed the wording of some strings. Thanks @Sefinek! (626ebf2)
+
 ## 26100.4946.69
 
 Tested on OS builds 26100.4946, 26100.5074, 26200.5751, and 26220.6682.
