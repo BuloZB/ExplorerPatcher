@@ -413,7 +413,7 @@ BEGIN
 
     IDS_ABOUT_VERSION           "Version %d.%d.%d.%d%s"
     IDS_ABOUT_PROJECT           "This project aims to enhance the working environment on Windows."
-    IDS_ABOUT_AUTHOR            "Proudly engineered by Valentin-Gabriel Radu."
+    IDS_ABOUT_AUTHOR            "Proudly engineered by %s and %s."
     IDS_ABOUT_OS                "Running on %s, OS Build %d.%d."
     IDS_ABOUT_GITHUB            "Visit project GitHub"
     IDS_ABOUT_WEBSITE           "Visit website"

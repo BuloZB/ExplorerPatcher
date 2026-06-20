@@ -1445,6 +1445,19 @@ static BOOL GUI_Build(HDC hDC, HWND hwnd, POINT pt)
                             );
                         }
                     }
+                    else if (!wcsncmp(text, L"%AUTHORSSTRING%", 15))
+                    {
+                        wchar_t wszFormat[MAX_PATH];
+                        int numChars = LoadStringW(hModule, IDS_ABOUT_AUTHOR, wszFormat, MAX_PATH);
+                        if (numChars != 0)
+                        {
+                            swprintf_s(
+                                text, MAX_LINE_LENGTH, wszFormat,
+                                L"Valentin-Gabriel Radu",
+                                L"Amrsatrio"
+                            );
+                        }
+                    }
                     else if (!wcsncmp(text, L"%OSVERSIONSTRING%", 17))
                     {
                         wchar_t wszFormat[MAX_PATH];
