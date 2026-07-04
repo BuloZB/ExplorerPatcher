@@ -1437,7 +1437,7 @@ inline BOOL DoesWindows10StartMenuExist()
         if (!IsWindows11())
         {
             s_tbWindows10StartMenuExists = 1;
-            return s_tbWindows10StartMenuExists;
+            return s_tbWindows10StartMenuExists == 1;
         }
 
         wchar_t szPath[MAX_PATH];

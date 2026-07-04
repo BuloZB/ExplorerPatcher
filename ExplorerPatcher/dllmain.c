@@ -7018,8 +7018,30 @@ void WINAPI Explorer_RefreshUI(int src)
                 dwTaskbarDa = dwTemp;
                 dwRefreshMask |= REFRESHUI_CENTER;
             }
-            RegCloseKey(hKey);
             //SearchboxTaskbarMode
+
+            dwTemp = 0;
+            dwSize = sizeof(DWORD);
+            RegQueryValueExW(
+                hKey,
+                TEXT("Start_ShowClassicMode"),
+                0,
+                NULL,
+                (LPBYTE)&dwTemp,
+                &dwSize
+            );
+            if (dwTemp && !DoesWindows10StartMenuExist())
+            {
+                dwTemp = 0;
+            }
+            if (dwTemp != dwStartShowClassicMode)
+            {
+                dwStartShowClassicMode = dwTemp;
+                extern void StartMenuAnimationHidePatch_ApplyOrRevert(BOOL bApply); // TwinUIPatches.cpp
+                StartMenuAnimationHidePatch_ApplyOrRevert(dwTemp != 0);
+            }
+
+            RegCloseKey(hKey);
         }
     }
     if (src == 99 || src == 2)
@@ -11760,18 +11782,17 @@ void StartMenu_LoadSettings(BOOL bRestartIfChanged)
     }
     if (hKey)
     {
+        dwVal = 0;
         dwSize = sizeof(DWORD);
-        if (IsWindows11()) dwVal = 0;
-        else dwVal = 1;
         RegQueryValueExW(
             hKey,
             TEXT("Start_ShowClassicMode"),
             0,
             NULL,
-            &dwVal,
+            (LPBYTE)&dwVal,
             &dwSize
         );
-        if (!DoesWindows10StartMenuExist())
+        if (dwVal && !DoesWindows10StartMenuExist())
         {
             dwVal = 0;
         }

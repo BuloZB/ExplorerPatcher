@@ -1828,6 +1828,74 @@ HRESULT CStartExperienceManager_OnViewHiddenHook(void* eventHandler, CSingleView
     return CStartExperienceManager_OnViewHiddenFunc(eventHandler, pSender);
 }
 
+struct StartMenuAnimationHidePatch
+{
+    // Please initialize all fields in FixStartMenuAnimation()
+
+    PBYTE _pSite1;
+    PBYTE _pSite2;
+#if defined(_M_X64)
+    BYTE _rgOriginalSite1[12];
+    BYTE _rgOriginalSite2[12];
+#elif defined(_M_ARM64)
+    BYTE _rgOriginalSite1[8];
+    BYTE _rgOriginalSite2[8];
+#endif
+
+    void ApplyOrRevert(bool bApply) const
+    {
+        if (_pSite1 != nullptr && _pSite2 != nullptr)
+        {
+            if (bApply)
+            {
+                ApplyForOne(_pSite1);
+                ApplyForOne(_pSite2);
+            }
+            else
+            {
+                RevertForOne(_pSite1, _rgOriginalSite1, sizeof(_rgOriginalSite1));
+                RevertForOne(_pSite2, _rgOriginalSite2, sizeof(_rgOriginalSite2));
+            }
+        }
+    }
+
+private:
+    static void ApplyForOne(PBYTE pTarget)
+    {
+#if defined(_M_X64)
+        DWORD dwOldProtect;
+        if (VirtualProtect(pTarget, 12, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            memset(pTarget, 0x90, 12); // nop
+            VirtualProtect(pTarget, 12, dwOldProtect, &dwOldProtect);
+        }
+#elif defined(_M_ARM64)
+        DWORD dwOldProtect;
+        if (VirtualProtect(pTarget, 8, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            *(DWORD*)(pTarget + 0) = 0xD503201F; // NOP
+            *(DWORD*)(pTarget + 4) = 0xD503201F; // NOP
+            VirtualProtect(pTarget, 8, dwOldProtect, &dwOldProtect);
+        }
+#endif
+    }
+
+    static void RevertForOne(PBYTE pTarget, const void* pOriginalBytes, size_t cbOriginalBytes)
+    {
+        DWORD dwOldProtect;
+        if (VirtualProtect(pTarget, cbOriginalBytes, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            memcpy(pTarget, pOriginalBytes, cbOriginalBytes);
+            VirtualProtect(pTarget, cbOriginalBytes, dwOldProtect, &dwOldProtect);
+        }
+    }
+} g_StartMenuAnimationHidePatch = {};
+
+EXTERN_C void StartMenuAnimationHidePatch_ApplyOrRevert(BOOL bApply)
+{
+    g_StartMenuAnimationHidePatch.ApplyOrRevert(bApply != 0);
+}
+
 BOOL FixStartMenuAnimation(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t cbSearch)
 {
     if (!pSearchBegin || !cbSearch)
@@ -2367,15 +2435,6 @@ BOOL FixStartMenuAnimation(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t cb
             printf("[SMA] matchHideB in CStartExperienceManager::Hide() = %llX\n", matchHideB - (PBYTE)hTwinuiPcshell);
         }
     }
-    auto hide_doForOne = [](PBYTE pTarget) -> void
-    {
-        DWORD dwOldProtect;
-        if (VirtualProtect(pTarget, 12, PAGE_EXECUTE_READWRITE, &dwOldProtect))
-        {
-            memset(pTarget, 0x90, 12); // nop
-            VirtualProtect(pTarget, 12, dwOldProtect, &dwOldProtect);
-        }
-    };
 #elif defined(_M_ARM64)
     // Find for nop targets:
     //   MOV             W??, #3
@@ -2439,16 +2498,6 @@ BOOL FixStartMenuAnimation(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t cb
             printf("[SMA] matchHideB in CStartExperienceManager::Hide() = %llX\n", matchHideB - (PBYTE)hTwinuiPcshell);
         }
     }
-    auto hide_doForOne = [](PBYTE pTarget) -> void
-    {
-        DWORD dwOldProtect;
-        if (VirtualProtect(pTarget, 8, PAGE_EXECUTE_READWRITE, &dwOldProtect))
-        {
-            *(DWORD*)(pTarget + 0) = 0xD503201F; // NOP
-            *(DWORD*)(pTarget + 4) = 0xD503201F; // NOP
-            VirtualProtect(pTarget, 8, dwOldProtect, &dwOldProtect);
-        }
-    };
 #endif
 
     if (!matchVtable
@@ -2471,11 +2520,11 @@ BOOL FixStartMenuAnimation(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t cb
     REPLACE_VTABLE_ENTRY(vtable, 6, CStartExperienceManager_OnViewCloaking);
     REPLACE_VTABLE_ENTRY(vtable, 10, CStartExperienceManager_OnViewHidden);
 
-    if (dwStartShowClassicMode)
-    {
-        hide_doForOne(matchHideA);
-        hide_doForOne(matchHideB);
-    }
+    g_StartMenuAnimationHidePatch._pSite1 = matchHideA;
+    g_StartMenuAnimationHidePatch._pSite2 = matchHideB;
+    memcpy(g_StartMenuAnimationHidePatch._rgOriginalSite1, matchHideA, sizeof(g_StartMenuAnimationHidePatch._rgOriginalSite1));
+    memcpy(g_StartMenuAnimationHidePatch._rgOriginalSite2, matchHideB, sizeof(g_StartMenuAnimationHidePatch._rgOriginalSite2));
+    g_StartMenuAnimationHidePatch.ApplyOrRevert(dwStartShowClassicMode != 0);
 
     int rv = -1;
     if (CStartExperienceManager_GetMonitorInformationFunc)
@@ -3730,8 +3779,7 @@ extern "C" void RunTwinUIPCShellPatches(symbols_addr* symbols_PTRS)
         }
     }
 
-    if ((global_rovi.dwBuildNumber > 22000 || global_rovi.dwBuildNumber == 22000 && global_ubr >= 65) // Allow on 22000.65+
-        && (bOldTaskbar || dwStartShowClassicMode))
+    if ((global_rovi.dwBuildNumber > 22000 || global_rovi.dwBuildNumber == 22000 && global_ubr >= 65) /*Allow on 22000.65+*/)
     {
         // Make sure crash counter is enabled. If one of the patches make Explorer crash while the start menu is open,
         // we don't want to softlock the user. The system reopens the start menu if Explorer terminates while it's open.
