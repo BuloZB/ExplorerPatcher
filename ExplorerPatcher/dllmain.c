@@ -9924,13 +9924,21 @@ void TryToFindExplorerOffsets(HANDLE hExplorer, PBYTE pSearchBegin, size_t cbSea
 extern HRESULT AppResolver_StartTileData_RoGetActivationFactory(HSTRING activatableClassId, REFIID iid, void** factory);
 
 typedef struct CCacheShortcut CCacheShortcut;
-extern HRESULT(*AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStartFunc)(void* _this, const CCacheShortcut* a2, const void* a3);
-extern HRESULT AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStart(void* _this, const CCacheShortcut* a2, const void* a3);
+HRESULT (/*__thiscall*/ *AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStartFunc)(void* _this, const CCacheShortcut* a2, const void* a3);
+HRESULT /*__thiscall*/ AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStart(void* _this, const CCacheShortcut* a2, const void* a3);
+
+extern HRESULT PatchAppResolver_PatchStartPinUnpinContextMenu(HMODULE hAppResolver);
 
 static void PatchAppResolver()
 {
     HANDLE hAppResolver = LoadLibraryExW(L"AppResolver.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!hAppResolver)
+        return;
 
+    // Patch context menu entry
+    PatchAppResolver_PatchStartPinUnpinContextMenu(hAppResolver);
+
+    // Fix pinning of items outside the apps list
     PBYTE pAppResolverText;
     DWORD cbAppResolverText;
     if (!TextSectionBeginAndSize(hAppResolver, &pAppResolverText, &cbAppResolverText))
@@ -10014,22 +10022,9 @@ static void PatchStartTileData(BOOL bSMEH)
 
     VnPatchIAT(hStartTileData, "api-ms-win-core-winrt-l1-1-0.dll", "RoGetActivationFactory", AppResolver_StartTileData_RoGetActivationFactory);
 
-    if (!bSMEH)
-        return;
-
-    if ((global_rovi.dwBuildNumber >= 22621 && global_rovi.dwBuildNumber <= 22635) && global_ubr >= 3420
-        || global_rovi.dwBuildNumber >= 25169)
+    if (global_rovi.dwBuildNumber > 22000 || global_rovi.dwBuildNumber == 22000 && global_ubr >= 65)
     {
         PatchStartTileDataFurther(hStartTileData, bSMEH);
-        /*HRESULT hr = CoInitialize(NULL);
-        if (SUCCEEDED(hr))
-        {
-            PatchStartTileDataFurther(hStartTileData, bSMEH);
-        }
-        if (hr == S_OK)
-        {
-            CoUninitialize();
-        }*/
     }
 }
 #endif

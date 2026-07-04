@@ -2003,7 +2003,15 @@ BOOL FixStartMenuAnimation(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t cb
     );
     if (matchSingleViewShellExperienceFields)
     {
-        g_SMAnimationPatchOffsets.startExperienceManager_singleViewShellExperience = (int)ARM64_DecodeADD(*(DWORD*)(matchSingleViewShellExperienceFields + 8));
+        DWORD insnADD = ARM64_DecodeADD(*(DWORD*)(matchSingleViewShellExperienceFields + 8));
+        if (insnADD != 0)
+        {
+            g_SMAnimationPatchOffsets.startExperienceManager_singleViewShellExperience = (int)insnADD;
+        }
+        else
+        {
+            matchSingleViewShellExperienceFields = nullptr;
+        }
     }
 #endif
     if (matchSingleViewShellExperienceFields)
@@ -3103,9 +3111,17 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
         );
         if (matchOffsetRcWorkArea)
         {
-            g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
+            DWORD insnADD = ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
+            if (insnADD != 0)
+            {
+                g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)insnADD;
+            }
+            else
+            {
+                matchOffsetRcWorkArea = nullptr;
+            }
         }
-        if (!matchOffsetRcWorkArea)
+        else
         {
             // With Feature_TaskbarJumplistOnHover (48980211)
             // 61 3A 40 F9 22 01 03 32 67 32 07 91
@@ -3123,7 +3139,15 @@ BOOL FixJumpViewPositioning(HMODULE hTwinuiPcshell, PBYTE pSearchBegin, size_t c
             );
             if (matchOffsetRcWorkArea)
             {
-                g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
+                DWORD insnADD = ARM64_DecodeADD(*(DWORD*)(matchOffsetRcWorkArea + 8));
+                if (insnADD != 0)
+                {
+                    g_JVPositioningPatchOffsets.jumpViewExperienceManager_rcWorkArea = 0x40 + (int)insnADD;
+                }
+                else
+                {
+                    matchOffsetRcWorkArea = nullptr;
+                }
             }
         }
     }
