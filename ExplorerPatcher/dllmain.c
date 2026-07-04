@@ -6949,6 +6949,8 @@ void UpdateSearchBox()
 #endif
 }
 
+extern void StartMenuAnimationHidePatch_ApplyOrRevert(BOOL bApply); // TwinUIPatches.cpp
+
 int numTBButtons = 0;
 void WINAPI Explorer_RefreshUI(int src)
 {
@@ -7037,8 +7039,9 @@ void WINAPI Explorer_RefreshUI(int src)
             if (dwTemp != dwStartShowClassicMode)
             {
                 dwStartShowClassicMode = dwTemp;
-                extern void StartMenuAnimationHidePatch_ApplyOrRevert(BOOL bApply); // TwinUIPatches.cpp
+#if WITH_MAIN_PATCHER
                 StartMenuAnimationHidePatch_ApplyOrRevert(dwTemp != 0);
+#endif
             }
 
             RegCloseKey(hKey);
