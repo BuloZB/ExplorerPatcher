@@ -13221,9 +13221,10 @@ bool IsUserOOBEOrCredentialReset()
 }
 #endif
 
-#define DLL_INJECTION_METHOD_DXGI 0
-#define DLL_INJECTION_METHOD_COM 1
-#define DLL_INJECTION_METHOD_START_INJECTION 2
+#define DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport 0
+#define DLL_INJECTION_METHOD_CreateDXGIFactory1 1
+#define DLL_INJECTION_METHOD_COM 2
+#define DLL_INJECTION_METHOD_START_INJECTION 3
 HRESULT EntryPoint(DWORD dwMethod)
 {
     if (bInstanced)
@@ -13237,7 +13238,8 @@ HRESULT EntryPoint(DWORD dwMethod)
     GetModuleFileNameW(hModule, dllName, MAX_PATH);
     PathStripPathW(dllName);
     BOOL bIsDllNameDXGI = !_wcsicmp(dllName, L"dxgi.dll");
-    if (dwMethod == DLL_INJECTION_METHOD_DXGI && !bIsDllNameDXGI)
+    if ((dwMethod == DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport || dwMethod == DLL_INJECTION_METHOD_CreateDXGIFactory1)
+        && !bIsDllNameDXGI)
     {
         return E_NOINTERFACE;
     }
@@ -13301,12 +13303,13 @@ HRESULT EntryPoint(DWORD dwMethod)
     wcscat_s(wszShellExpectedPath, MAX_PATH, L"\\SystemApps\\ShellExperienceHost_cw5n1h2txyewy\\ShellExperienceHost.exe");
     BOOL bIsThisShellEH = !_wcsicmp(exePath, wszShellExpectedPath);
 
-    if (dwMethod == DLL_INJECTION_METHOD_DXGI)
+    if (dwMethod == DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport && !bIsThisExplorer)
     {
-        if (!(bIsThisExplorer || bIsThisStartMEH || bIsThisShellEH))
-        {
-            return E_NOINTERFACE;
-        }
+        return E_NOINTERFACE;
+    }
+    if (dwMethod == DLL_INJECTION_METHOD_CreateDXGIFactory1 && !(bIsThisStartMEH || bIsThisShellEH))
+    {
+        return E_NOINTERFACE;
     }
     if (dwMethod == DLL_INJECTION_METHOD_COM && (bIsThisExplorer || bIsThisStartMEH || bIsThisShellEH))
     {
@@ -13320,11 +13323,11 @@ HRESULT EntryPoint(DWORD dwMethod)
     bIsExplorerProcess = bIsThisExplorer;
     if (bIsThisExplorer)
     {
+        bInstanced = TRUE;
 #if WITH_MAIN_PATCHER
         if (GetSystemMetrics(SM_CLEANBOOT) != 0 || IsUserOOBEOrCredentialReset())
         {
             IncrementDLLReferenceCount(hModule);
-            bInstanced = TRUE;
             return E_NOINTERFACE;
         }
 #endif
@@ -13333,16 +13336,15 @@ HRESULT EntryPoint(DWORD dwMethod)
         if (!desktopExists && CrashCounterHandleEntryPoint())
         {
             IncrementDLLReferenceCount(hModule);
-            bInstanced = TRUE;
             return E_NOINTERFACE;
         }
 #endif
         Inject(!desktopExists);
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (bIsThisStartMEH)
     {
+        bInstanced = TRUE;
         InjectStartMenu();
 #if WITH_MAIN_PATCHER
         if (IsXamlSoundsEnabled())
@@ -13352,10 +13354,10 @@ HRESULT EntryPoint(DWORD dwMethod)
         }
 #endif
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (bIsThisShellEH)
     {
+        bInstanced = TRUE;
 #if WITH_MAIN_PATCHER
         InjectShellExperienceHost();
         if (IsXamlSoundsEnabled())
@@ -13365,13 +13367,12 @@ HRESULT EntryPoint(DWORD dwMethod)
         }
 #endif
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (dwMethod == DLL_INJECTION_METHOD_COM)
     {
+        bInstanced = TRUE;
         Inject(FALSE);
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
 
     return E_NOINTERFACE;
@@ -13381,13 +13382,13 @@ HRESULT EntryPoint(DWORD dwMethod)
 // for explorer.exe and ShellExperienceHost.exe
 __declspec(dllexport) HRESULT DXGIDeclareAdapterRemovalSupport()
 {
-    EntryPoint(DLL_INJECTION_METHOD_DXGI);
+    EntryPoint(DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport);
     return DXGIDeclareAdapterRemovalSupportOriginal();
 }
 // for StartMenuExperienceHost.exe via DXGI
 __declspec(dllexport) HRESULT CreateDXGIFactory1(void* p1, void** p2)
 {
-    EntryPoint(DLL_INJECTION_METHOD_DXGI);
+    EntryPoint(DLL_INJECTION_METHOD_CreateDXGIFactory1);
     return CreateDXGIFactory1Original(p1, p2);
 }
 // for StartMenuExperienceHost.exe via injection from explorer
