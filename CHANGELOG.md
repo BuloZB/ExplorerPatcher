@@ -8,7 +8,7 @@ Tested on OS builds 22621.4317 x64, 22631.7079 x64, 26100.6899 ARM64, 26200.8457
 
 ##### 1
 
-* **🚨 Important: Fixed 10 taskbar and 10 Start menu crashing on 26220.8474 (Beta) and 26300.8493 (Experimental).**
+* **🚨 Important: Fixed 10 taskbar and 10 Start menu crashing on 26xxx.8474+ and 28xxx.2298+.**
   * Due to 10 Start menu's tile layout engine being removed from `StartTileData.dll`, the 10 Start menu option has been temporarily hidden. (bf36cde, 8a5b8ba)
   * *The 10 Start menu option has been made available again in version 70.2.*
 * **Highlight:** Fixed Windows 10 battery flyout crashing on 25951+. (659c2d0)
@@ -46,7 +46,7 @@ Tested on OS builds 22621.4317 x64, 22631.7079 x64, 26100.6899 ARM64, 26200.8457
 
 ##### 4
 
-* Fixed 10 (EP) taskbar crashing on 28xxx.2298+ (26H1), x64 only. ARM64 is not affected.
+* Fixed 10 (EP) taskbar crashing on 28xxx.2298+ (26H1), x64 only. ARM64 is not affected. (#5063)
 * Restored 10 Start tile pinning behavior on 26xxx.8474+ and 28xxx.2298+. (96839ff, 0ecde00)
 * Fixed Explorer Pin to Start/Unpin from Start context menu action behavior when 10 Start is used on 226xx.3420+. (96839ff, 0ecde00)
 * Switching between 10 and 11 Start without restarting Explorer no longer results in broken open/close animation. (f022f50, 59a6a42)
