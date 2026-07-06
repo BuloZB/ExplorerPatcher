@@ -50,7 +50,7 @@ Tested on OS builds 22621.4317 x64, 22631.7079 x64, 26100.6899 ARM64, 26200.8457
 * Restored 10 Start tile pinning behavior on 26xxx.8474+ and 28xxx.2298+. (96839ff, 0ecde00)
 * Fixed Explorer Pin to Start/Unpin from Start context menu action behavior when 10 Start is used on 226xx.3420+. (96839ff, 0ecde00)
 * Switching between 10 and 11 Start without restarting Explorer no longer results in broken open/close animation. (f022f50, 59a6a42)
-* Fixed properties dialog crash with [`hide-titlebar-elements`](https://windhawk.net/mods/hide-titlebar-elements) Windhawk mod. Thanks @ypx13 for the report and @Allison for the work! (0fad899)
+* Fixed properties dialog crash with [`hide-titlebar-elements`](https://windhawk.net/mods/hide-titlebar-elements) Windhawk mod. Thanks @ypx13 for the report and @AllieTheFox for the work! (0fad899)
 * Fixed Explorer crashlooping with [`file-explorer-content-animation`](https://windhawk.net/mods/file-explorer-content-animation) Windhawk mod. (#5098, 85e3d3a)
 * Fixed Simple Window Switcher not showing up when 11 taskbar is used. (#4982, 91bbc0e)
 
