@@ -121,9 +121,7 @@ HANDLE hShell32 = NULL;
 // HANDLE hDelayedInjectionThread = NULL;
 HANDLE hSwsSettingsChanged = NULL;
 HANDLE hSwsOpacityMaybeChanged = NULL;
-HANDLE hWin11AltTabInitialized = NULL;
 BYTE* lpShouldDisplayCCButton = NULL;
-HANDLE hCanStartSws = NULL;
 DWORD dwWeatherViewMode = EP_WEATHER_VIEW_ICONTEXT;
 DWORD dwWeatherTemperatureUnit = EP_WEATHER_TUNIT_CELSIUS;
 DWORD dwWeatherUpdateSchedule = EP_WEATHER_UPDATE_NORMAL;
@@ -729,7 +727,6 @@ DWORD EP_ServiceWindowThread(DWORD unused)
         }
         DestroyWindow(hWndServiceWindow);
     }
-    SetEvent(hCanStartSws);
 }
 #endif
 #pragma endregion
@@ -1305,7 +1302,6 @@ DWORD FixTaskbarAutohide(DWORD unused)
             SHAppBarMessage(ABM_SETSTATE, &abd);
         }
     }
-    SetEvent(hCanStartSws);
 
     return 0;
 }
@@ -5288,7 +5284,6 @@ DWORD SignalShellReady(DWORD wait)
 
     Sleep(600);
 
-    SetEvent(hCanStartSws);
     if (bOldTaskbar && (global_rovi.dwBuildNumber >= 22567))
     {
         PatchSndvolsso();
@@ -5341,24 +5336,24 @@ void sws_ReadSettings(sws_WindowSwitcher* sws)
         RegCloseKey(hKey);
     }
 
-    RegCreateKeyExW(
-        HKEY_CURRENT_USER,
-        TEXT(REGPATH) L"\\sws",
-        0,
-        NULL,
-        REG_OPTION_NON_VOLATILE,
-        KEY_READ,
-        NULL,
-        &hKey,
-        NULL
-    );
-    if (hKey == NULL || hKey == INVALID_HANDLE_VALUE)
+    if (sws)
     {
-        hKey = NULL;
-    }
-    if (hKey)
-    {
-        if (sws)
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            TEXT(REGPATH) L"\\sws",
+            0,
+            NULL,
+            REG_OPTION_NON_VOLATILE,
+            KEY_READ,
+            NULL,
+            &hKey,
+            NULL
+        );
+        if (hKey == NULL || hKey == INVALID_HANDLE_VALUE)
+        {
+            hKey = NULL;
+        }
+        if (hKey)
         {
             sws_WindowSwitcher_InitializeDefaultSettings(sws);
             sws->dwWallpaperSupport = SWS_WALLPAPERSUPPORT_EXPLORER;
@@ -5530,21 +5525,13 @@ void sws_ReadSettings(sws_WindowSwitcher* sws)
                 sws_WindowSwitcher_RegisterHotkeys(sws, NULL);
                 sws_WindowSwitcher_RefreshTheme(sws);
             }
+            RegCloseKey(hKey);
         }
-        RegCloseKey(hKey);
     }
 }
 
 DWORD WindowSwitcher(DWORD unused)
 {
-    if (IsWindows11())
-    {
-        WaitForSingleObject(hCanStartSws, INFINITE);
-    }
-    if (!bOldTaskbar)
-    {
-        WaitForSingleObject(hWin11AltTabInitialized, INFINITE);
-    }
     Sleep(1000);
 
     while (TRUE)
@@ -10876,8 +10863,6 @@ DWORD Inject(BOOL bIsExplorer)
 
 
 #if WITH_MAIN_PATCHER
-    hCanStartSws = CreateEventW(NULL, FALSE, FALSE, NULL);
-    hWin11AltTabInitialized = CreateEventW(NULL, FALSE, FALSE, NULL);
     CreateThread(
         0,
         0,

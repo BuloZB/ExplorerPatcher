@@ -380,7 +380,6 @@ extern DWORD bNoMenuAccelerator;
 extern DWORD dwAltTabSettings;
 extern DWORD dwSnapAssistSettings;
 extern DWORD dwStartShowClassicMode;
-extern HANDLE hWin11AltTabInitialized;
 
 typedef HRESULT(*ImmersiveContextMenuHelper_ApplyOwnerDrawToMenu_t)(HMENU hmenu, HWND hWnd, POINT* pptOrigin, unsigned int icmoFlags, void* srgRenderingData);
 extern ImmersiveContextMenuHelper_ApplyOwnerDrawToMenu_t ImmersiveContextMenuHelper_ApplyOwnerDrawToMenuFunc;
@@ -1000,13 +999,6 @@ LSTATUS twinuipcshell_RegGetValueW(
             {
                 *(DWORD*)pvData = 1;
             }
-        }
-
-        if (!bOldTaskbar && hWin11AltTabInitialized)
-        {
-            SetEvent(hWin11AltTabInitialized);
-            CloseHandle(hWin11AltTabInitialized);
-            hWin11AltTabInitialized = nullptr;
         }
 
         lRes = ERROR_SUCCESS;
