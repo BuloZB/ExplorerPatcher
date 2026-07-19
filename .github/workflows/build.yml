@@ -17,13 +17,9 @@ on:
       config:
         description: 'Configuration'
         required: false
-      build_dir:
-        description: 'Build dir'
-        required: false
 
 env:
-  SOLUTION_FILE_PATH: .
-  BUILD_CONFIGURATION: Release
+  BUILD_CONFIGURATION: ${{ github.event.inputs.config || 'Release' }}
 
 permissions:
   contents: write
@@ -34,15 +30,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Print inputs
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           echo "ref: ${GITHUB_EVENT_INPUTS_REF}"
           echo "config: ${GITHUB_EVENT_INPUTS_CONFIG}"
-          echo "build_dir: ${GITHUB_EVENT_INPUTS_BUILD_DIR}"
         env:
           GITHUB_EVENT_INPUTS_REF: ${{ github.event.inputs.ref }}
           GITHUB_EVENT_INPUTS_CONFIG: ${{ github.event.inputs.config }}
-          GITHUB_EVENT_INPUTS_BUILD_DIR: ${{ github.event.inputs.build_dir }}
 
       - name: Checkout latest build and submodules
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -87,11 +82,17 @@ jobs:
       - name: Restore NuGet packages
         run: |
           nuget restore ExplorerPatcher.sln
+          nuget restore ep_starttiledata/ep_starttiledata.slnx
 
-      - name: Build dependencies
+      - name: Build dependencies (Debug)
+        if: env.BUILD_CONFIGURATION == 'Debug'
         shell: cmd
-        run: |
-          BuildDependencies%BUILD_CONFIGURATION%.bat
+        run: BuildDependenciesDebug.bat
+
+      - name: Build dependencies (Release)
+        if: env.BUILD_CONFIGURATION == 'Release'
+        shell: cmd
+        run: BuildDependenciesRelease.bat
 
       - name: Download ep_taskbar
         uses: robinraju/release-downloader@28fc21f50d76778e7023361aa1f863e717d3d56f # v1.13
@@ -120,40 +121,10 @@ jobs:
             done
           fi
 
-      - name: Build ExplorerPatcher (IA-32)
-        if: github.event.inputs.config == ''
+      - name: Build ExplorerPatcher
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: |
-          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=IA-32 ${{env.SOLUTION_FILE_PATH}}
-
-      - name: Build ExplorerPatcher (amd64)
-        if: github.event.inputs.config == ''
-        working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: |
-          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=amd64 ${{env.SOLUTION_FILE_PATH}}
-
-      - name: Build ExplorerPatcher (arm64)
-        if: github.event.inputs.config == ''
-        working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: |
-          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=arm64 /p:WithArm64XBinaries=true ${{env.SOLUTION_FILE_PATH}}
-
-      - name: Build ExplorerPatcher (Custom Build)
-        if: github.event.inputs.config != ''
-        working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: |
-          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=$env:GITHUB_EVENT_INPUTS_CONFIG ${{env.SOLUTION_FILE_PATH}}
-        env:
-          GITHUB_EVENT_INPUTS_CONFIG: ${{ github.event.inputs.config }}
-
-      - name: Create expected build directory
-        if: github.event.inputs.build_dir != ''
-        shell: bash
-        run: |
-          mkdir build
-          cp -r ${GITHUB_EVENT_INPUTS_BUILD_DIR}/Release build/Release
-        env:
-          GITHUB_EVENT_INPUTS_BUILD_DIR: ${{ github.event.inputs.build_dir }}
+          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} build.proj
 
       - name: Generate dxgi.dll
         shell: bash

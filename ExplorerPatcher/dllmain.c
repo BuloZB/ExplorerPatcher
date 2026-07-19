@@ -121,9 +121,7 @@ HANDLE hShell32 = NULL;
 // HANDLE hDelayedInjectionThread = NULL;
 HANDLE hSwsSettingsChanged = NULL;
 HANDLE hSwsOpacityMaybeChanged = NULL;
-HANDLE hWin11AltTabInitialized = NULL;
 BYTE* lpShouldDisplayCCButton = NULL;
-HANDLE hCanStartSws = NULL;
 DWORD dwWeatherViewMode = EP_WEATHER_VIEW_ICONTEXT;
 DWORD dwWeatherTemperatureUnit = EP_WEATHER_TUNIT_CELSIUS;
 DWORD dwWeatherUpdateSchedule = EP_WEATHER_UPDATE_NORMAL;
@@ -729,7 +727,6 @@ DWORD EP_ServiceWindowThread(DWORD unused)
         }
         DestroyWindow(hWndServiceWindow);
     }
-    SetEvent(hCanStartSws);
 }
 #endif
 #pragma endregion
@@ -1305,7 +1302,6 @@ DWORD FixTaskbarAutohide(DWORD unused)
             SHAppBarMessage(ABM_SETSTATE, &abd);
         }
     }
-    SetEvent(hCanStartSws);
 
     return 0;
 }
@@ -5288,7 +5284,6 @@ DWORD SignalShellReady(DWORD wait)
 
     Sleep(600);
 
-    SetEvent(hCanStartSws);
     if (bOldTaskbar && (global_rovi.dwBuildNumber >= 22567))
     {
         PatchSndvolsso();
@@ -5341,24 +5336,24 @@ void sws_ReadSettings(sws_WindowSwitcher* sws)
         RegCloseKey(hKey);
     }
 
-    RegCreateKeyExW(
-        HKEY_CURRENT_USER,
-        TEXT(REGPATH) L"\\sws",
-        0,
-        NULL,
-        REG_OPTION_NON_VOLATILE,
-        KEY_READ,
-        NULL,
-        &hKey,
-        NULL
-    );
-    if (hKey == NULL || hKey == INVALID_HANDLE_VALUE)
+    if (sws)
     {
-        hKey = NULL;
-    }
-    if (hKey)
-    {
-        if (sws)
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            TEXT(REGPATH) L"\\sws",
+            0,
+            NULL,
+            REG_OPTION_NON_VOLATILE,
+            KEY_READ,
+            NULL,
+            &hKey,
+            NULL
+        );
+        if (hKey == NULL || hKey == INVALID_HANDLE_VALUE)
+        {
+            hKey = NULL;
+        }
+        if (hKey)
         {
             sws_WindowSwitcher_InitializeDefaultSettings(sws);
             sws->dwWallpaperSupport = SWS_WALLPAPERSUPPORT_EXPLORER;
@@ -5530,21 +5525,13 @@ void sws_ReadSettings(sws_WindowSwitcher* sws)
                 sws_WindowSwitcher_RegisterHotkeys(sws, NULL);
                 sws_WindowSwitcher_RefreshTheme(sws);
             }
+            RegCloseKey(hKey);
         }
-        RegCloseKey(hKey);
     }
 }
 
 DWORD WindowSwitcher(DWORD unused)
 {
-    if (IsWindows11())
-    {
-        WaitForSingleObject(hCanStartSws, INFINITE);
-    }
-    if (!bOldTaskbar)
-    {
-        WaitForSingleObject(hWin11AltTabInitialized, INFINITE);
-    }
     Sleep(1000);
 
     while (TRUE)
@@ -6949,6 +6936,8 @@ void UpdateSearchBox()
 #endif
 }
 
+extern void StartMenuAnimationHidePatch_ApplyOrRevert(BOOL bApply); // TwinUIPatches.cpp
+
 int numTBButtons = 0;
 void WINAPI Explorer_RefreshUI(int src)
 {
@@ -7018,8 +7007,31 @@ void WINAPI Explorer_RefreshUI(int src)
                 dwTaskbarDa = dwTemp;
                 dwRefreshMask |= REFRESHUI_CENTER;
             }
-            RegCloseKey(hKey);
             //SearchboxTaskbarMode
+
+            dwTemp = 0;
+            dwSize = sizeof(DWORD);
+            RegQueryValueExW(
+                hKey,
+                TEXT("Start_ShowClassicMode"),
+                0,
+                NULL,
+                (LPBYTE)&dwTemp,
+                &dwSize
+            );
+            if (dwTemp && !DoesWindows10StartMenuExist())
+            {
+                dwTemp = 0;
+            }
+            if (dwTemp != dwStartShowClassicMode)
+            {
+                dwStartShowClassicMode = dwTemp;
+#if WITH_MAIN_PATCHER
+                StartMenuAnimationHidePatch_ApplyOrRevert(dwTemp != 0);
+#endif
+            }
+
+            RegCloseKey(hKey);
         }
     }
     if (src == 99 || src == 2)
@@ -8782,8 +8794,8 @@ BOOL explorer_SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
 
     bTaskbarSet = TRUE;
     
-    StuckRectsData srd;
-    DWORD pcbData = sizeof(StuckRectsData);
+    TVSD srd;
+    DWORD pcbData = sizeof(TVSD);
     RegGetValueW(
         HKEY_CURRENT_USER,
         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StuckRectsLegacy",
@@ -8793,22 +8805,12 @@ BOOL explorer_SetRect(LPRECT lprc, int xLeft, int yTop, int xRight, int yBottom)
         &srd,
         &pcbData);
 
-    if (pcbData != sizeof(StuckRectsData))
+    if (pcbData != sizeof(TVSD) || srd.dwSize != sizeof(TVSD) || srd.lSignature != -2)
     {
         return SetRect(lprc, xLeft, yTop, xRight, yBottom);
     }
 
-    if (srd.pvData[0] != sizeof(StuckRectsData))
-    {
-        return SetRect(lprc, xLeft, yTop, xRight, yBottom);
-    }
-
-    if (srd.pvData[1] != -2)
-    {
-        return SetRect(lprc, xLeft, yTop, xRight, yBottom);
-    }
-
-    HMONITOR hMonitor = MonitorFromRect(&(srd.rc), MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR hMonitor = MonitorFromRect(&(srd.rcLastStuck), MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi;
     ZeroMemory(&mi, sizeof(MONITORINFO));
     mi.cbSize = sizeof(MONITORINFO);
@@ -9909,13 +9911,21 @@ void TryToFindExplorerOffsets(HANDLE hExplorer, PBYTE pSearchBegin, size_t cbSea
 extern HRESULT AppResolver_StartTileData_RoGetActivationFactory(HSTRING activatableClassId, REFIID iid, void** factory);
 
 typedef struct CCacheShortcut CCacheShortcut;
-extern HRESULT(*AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStartFunc)(void* _this, const CCacheShortcut* a2, const void* a3);
-extern HRESULT AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStart(void* _this, const CCacheShortcut* a2, const void* a3);
+HRESULT (/*__thiscall*/ *AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStartFunc)(void* _this, const CCacheShortcut* a2, const void* a3);
+HRESULT /*__thiscall*/ AppResolver_CAppResolverCacheBuilder__AddUserPinnedShortcutToStart(void* _this, const CCacheShortcut* a2, const void* a3);
+
+extern HRESULT PatchAppResolver_PatchStartPinUnpinContextMenu(HMODULE hAppResolver);
 
 static void PatchAppResolver()
 {
     HANDLE hAppResolver = LoadLibraryExW(L"AppResolver.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!hAppResolver)
+        return;
 
+    // Patch context menu entry
+    PatchAppResolver_PatchStartPinUnpinContextMenu(hAppResolver);
+
+    // Fix pinning of items outside the apps list
     PBYTE pAppResolverText;
     DWORD cbAppResolverText;
     if (!TextSectionBeginAndSize(hAppResolver, &pAppResolverText, &cbAppResolverText))
@@ -9999,22 +10009,9 @@ static void PatchStartTileData(BOOL bSMEH)
 
     VnPatchIAT(hStartTileData, "api-ms-win-core-winrt-l1-1-0.dll", "RoGetActivationFactory", AppResolver_StartTileData_RoGetActivationFactory);
 
-    if (!bSMEH)
-        return;
-
-    if ((global_rovi.dwBuildNumber >= 22621 && global_rovi.dwBuildNumber <= 22635) && global_ubr >= 3420
-        || global_rovi.dwBuildNumber >= 25169)
+    if (global_rovi.dwBuildNumber > 22000 || global_rovi.dwBuildNumber == 22000 && global_ubr >= 65)
     {
         PatchStartTileDataFurther(hStartTileData, bSMEH);
-        /*HRESULT hr = CoInitialize(NULL);
-        if (SUCCEEDED(hr))
-        {
-            PatchStartTileDataFurther(hStartTileData, bSMEH);
-        }
-        if (hr == S_OK)
-        {
-            CoUninitialize();
-        }*/
     }
 }
 #endif
@@ -10866,8 +10863,6 @@ DWORD Inject(BOOL bIsExplorer)
 
 
 #if WITH_MAIN_PATCHER
-    hCanStartSws = CreateEventW(NULL, FALSE, FALSE, NULL);
-    hWin11AltTabInitialized = CreateEventW(NULL, FALSE, FALSE, NULL);
     CreateThread(
         0,
         0,
@@ -11770,18 +11765,17 @@ void StartMenu_LoadSettings(BOOL bRestartIfChanged)
     }
     if (hKey)
     {
+        dwVal = 0;
         dwSize = sizeof(DWORD);
-        if (IsWindows11()) dwVal = 0;
-        else dwVal = 1;
         RegQueryValueExW(
             hKey,
             TEXT("Start_ShowClassicMode"),
             0,
             NULL,
-            &dwVal,
+            (LPBYTE)&dwVal,
             &dwSize
         );
-        if (!DoesWindows10StartMenuExist())
+        if (dwVal && !DoesWindows10StartMenuExist())
         {
             dwVal = 0;
         }
@@ -12144,6 +12138,110 @@ static void StartMenu_FixUserTileMenu(PBYTE pSearchBegin, size_t cbSearch)
     }
 }
 
+static void StartMenu_DisableDataCorruptionRecovery(PBYTE pSearchBegin, size_t cbSearch)
+{
+    if (!pSearchBegin || !cbSearch)
+        return;
+
+    // StartUI::DataCorruptionRecovery::PreStartInitialize
+#if defined(_M_X64)
+    // E8 ?? ?? ?? ?? 48 83 65 F0 00 48 8B CE E8 ?? ?? ?? ?? 48 8B D8 48 89 45 E8
+    // xxxxxxxxxxxxxx NOP this call
+    // Ref: StartUI::App::InitializeStartModelForStartMenu
+    PBYTE matchPre = FindPattern(
+        pSearchBegin,
+        cbSearch,
+        "\x48\x83\x65\xF0\x00\x48\x8B\xCE\xE8\x00\x00\x00\x00\x48\x8B\xD8\x48\x89\x45\xE8",
+        "xxxxxxxxx????xxxxxxx"
+    );
+    if (matchPre)
+    {
+        matchPre = matchPre - 5 >= pSearchBegin ? matchPre - 5 : NULL;
+        if (matchPre && *matchPre != 0xE8)
+        {
+            matchPre = NULL;
+        }
+    }
+#elif defined (_M_ARM64)
+    // ?? ?? ?? ?? FF 26 00 F9 E0 03 16 AA ?? ?? ?? ?? F4 03 00 AA F4 22 00 F9
+    // xxxxxxxxxxx NOP this BL
+    // Ref: StartUI::App::InitializeStartModelForStartMenu
+    PBYTE matchPre = FindPattern_4_(
+        pSearchBegin,
+        cbSearch,
+        "\xFF\x26\x00\xF9\xE0\x03\x16\xAA\x00\x00\x00\x00\xF4\x03\x00\xAA\xF4\x22\x00\xF9",
+        "xxxxxxxx????xxxxxxxx"
+    );
+    if (matchPre)
+    {
+        matchPre = matchPre - 4 >= pSearchBegin ? matchPre - 4 : NULL;
+        if (matchPre && !ARM64_IsBL(*(DWORD*)matchPre))
+        {
+            matchPre = NULL;
+        }
+    }
+#endif
+
+    // StartUI::DataCorruptionRecovery::PostStartInitialize
+#if defined(_M_X64)
+    // 80 BF ?? ?? 00 00 00 75 2A C6 87 ?? ?? 00 00 01 E8 ?? ?? ?? ??
+    //                                   NOP this call xxxxxxxxxxxxxx
+    // Ref: StartUI::StartViewModel::CreateAndPopulateGroupsLayoutResolver
+    PBYTE matchPost = FindPattern(
+        pSearchBegin,
+        cbSearch,
+        "\x80\xBF\x00\x00\x00\x00\x00\x75\x2A\xC6\x87\x00\x00\x00\x00\x01\xE8",
+        "xx??xxxxxxx??xxxx"
+    );
+    if (matchPost)
+    {
+        matchPost += 16;
+    }
+#elif defined (_M_ARM64)
+    // FD 7B BE A9 FD 03 00 91 30 00 80 92 B0 0B 00 F9 20 00 80 52 ?? ?? ?? ?? 1F 20 03 D5
+    //                                                 NOP this BL xxxxxxxxxxx
+    // Ref: StartUI::DataCorruptionRecovery::PostStartInitialize
+    PBYTE matchPost = FindPattern_4_(
+        pSearchBegin,
+        cbSearch,
+        "\xFD\x7B\xBE\xA9\xFD\x03\x00\x91\x30\x00\x80\x92\xB0\x0B\x00\xF9\x20\x00\x80\x52\x00\x00\x00\x00\x1F\x20\x03\xD5",
+        "xxxxxxxxxxxxxxxxxxxx????xxxx"
+    );
+    if (matchPost)
+    {
+        matchPost += 20;
+    }
+#endif
+
+    if (matchPre && matchPost)
+    {
+        DWORD dwOldProtect;
+#if defined (_M_X64)
+        if (VirtualProtect(matchPre, 5, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            memset(matchPre, 0x90, 5);
+            VirtualProtect(matchPre, 5, dwOldProtect, &dwOldProtect);
+        }
+        if (VirtualProtect(matchPost, 5, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            memset(matchPost, 0x90, 5);
+            VirtualProtect(matchPost, 5, dwOldProtect, &dwOldProtect);
+        }
+#elif defined (_M_ARM64)
+        if (VirtualProtect(matchPre, 4, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            *(DWORD*)matchPre = 0xD503201F;
+            VirtualProtect(matchPre, 4, dwOldProtect, &dwOldProtect);
+        }
+        if (VirtualProtect(matchPost, 4, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+        {
+            *(DWORD*)matchPost = 0xD503201F;
+            VirtualProtect(matchPost, 4, dwOldProtect, &dwOldProtect);
+        }
+#endif
+    }
+}
+
 LSTATUS StartUI_RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REGSAM samDesired, PHKEY phkResult)
 {
     if (wcsstr(lpSubKey, L"$start.tilegrid$windows.data.curatedtilecollection.tilecollection\\Current"))
@@ -12182,6 +12280,68 @@ LSTATUS StartUI_RegCloseKey(HKEY hKey)
         hKey_StartUI_TileGrid = NULL;
     }
     return RegCloseKey(hKey);
+}
+
+HRESULT StartUI_CoCreateInstanceHook(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID* ppv)
+{
+    if (IsEqualCLSID(rclsid, &CLSID_StartLayoutFactory))
+    {
+        if (dwStartShowClassicMode && IsWindows11())
+        {
+            WCHAR szPath[MAX_PATH];
+            SHGetFolderPathW(NULL, SPECIAL_FOLDER, NULL, SHGFP_TYPE_CURRENT, szPath);
+            wcscat_s(szPath, MAX_PATH, _T(APP_RELATIVE_PATH) L"\\ep_starttiledata.dll");
+
+            HMODULE hMyStartTileData = LoadLibraryW(szPath);
+            if (hMyStartTileData)
+            {
+                HRESULT hr = E_FAIL;
+
+                typedef HRESULT (WINAPI *DllGetClassObject_t)(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+                DllGetClassObject_t pfnDllGetClassObject = (DllGetClassObject_t)GetProcAddress(hMyStartTileData, "DllGetClassObject");
+                if (pfnDllGetClassObject)
+                {
+                    IClassFactory* pClassFactory = NULL;
+                    hr = pfnDllGetClassObject(rclsid, &IID_IClassFactory, (LPVOID*)&pClassFactory);
+                    if (SUCCEEDED(hr))
+                    {
+                        hr = pClassFactory->lpVtbl->CreateInstance(pClassFactory, pUnkOuter, riid, ppv);
+                        pClassFactory->lpVtbl->Release(pClassFactory);
+                    }
+                }
+
+                if (FAILED(hr))
+                {
+                    FreeLibrary(hMyStartTileData);
+                }
+
+                return hr;
+            }
+        }
+    }
+
+    return CoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
+}
+
+HRESULT StartExperienceWrapper_Wrap(REFIID riid, void** ppv);
+
+EXTERN_C const IID IID_IStartExperienceStatics;
+
+HRESULT (STDAPICALLTYPE *StartUI_GetActivationFactoryByPCWSTRFunc)(PCWSTR activatableClassId, REFIID riid, void** ppv);
+HRESULT STDAPICALLTYPE StartUI_GetActivationFactoryByPCWSTRHook(PCWSTR activatableClassId, REFIID riid, void** ppv)
+{
+    if (wcscmp(activatableClassId, L"Windows.Internal.Shell.StartUI.StartExperience") == 0
+        && IsEqualIID(riid, &IID_IStartExperienceStatics))
+    {
+        HRESULT hr = StartUI_GetActivationFactoryByPCWSTRFunc(activatableClassId, riid, ppv);
+        if (SUCCEEDED(hr))
+        {
+            hr = StartExperienceWrapper_Wrap(riid, ppv);
+        }
+        return hr;
+    }
+
+    return StartUI_GetActivationFactoryByPCWSTRFunc(activatableClassId, riid, ppv);
 }
 
 int Start_SetWindowRgn(HWND hWnd, HRGN hRgn, BOOL bRedraw)
@@ -12791,6 +12951,9 @@ DWORD InjectStartMenu()
 
         if (IsWindows11())
         {
+            // Use our tile layout engine (removed in 26xxx.8493+)
+            VnPatchIAT(hStartUI, "api-ms-win-core-com-l1-1-0.dll", "CoCreateInstance", StartUI_CoCreateInstanceHook);
+
             // Fixes Pin to Start/Unpin from Start
             PatchAppResolver();
             PatchStartTileData(TRUE);
@@ -12798,12 +12961,13 @@ DWORD InjectStartMenu()
             // Fixes context menu crashes
             StartMenu_FixContextMenuXbfHijackMethod();
 
-            // Fixes user tile menu
+            // Fixes user tile menu & disables data corruption recovery
             PBYTE pStartUIText;
             DWORD cbStartUIText;
             if (TextSectionBeginAndSize(hStartUI, &pStartUIText, &cbStartUIText))
             {
                 StartMenu_FixUserTileMenu(pStartUIText, cbStartUIText);
+                StartMenu_DisableDataCorruptionRecovery(pStartUIText, cbStartUIText);
             }
 
             // Enables "Show more tiles" setting
@@ -12812,6 +12976,17 @@ DWORD InjectStartMenu()
             VnPatchIAT(hWindowsCloudStore, "api-ms-win-core-registry-l1-1-0.dll", "RegOpenKeyExW", StartUI_RegOpenKeyExW);
             VnPatchIAT(hWindowsCloudStore, "api-ms-win-core-registry-l1-1-0.dll", "RegQueryValueExW", StartUI_RegQueryValueExW);
             VnPatchIAT(hWindowsCloudStore, "api-ms-win-core-registry-l1-1-0.dll", "RegCloseKey", StartUI_RegCloseKey);
+
+            // Adds compatibility with RLTM ("Remove Legacy Tablet Mode" / 61558864) feature flag
+            HANDLE hWincorlib = GetModuleHandleW(L"wincorlib.DLL");
+            if (hWincorlib)
+            {
+                StartUI_GetActivationFactoryByPCWSTRFunc = GetProcAddress(hWincorlib, "?GetActivationFactoryByPCWSTR@@YAJPEAXAEAVGuid@Platform@@PEAPEAX@Z");
+            }
+            if (StartUI_GetActivationFactoryByPCWSTRFunc)
+            {
+                VnPatchIAT(hStartUI, "wincorlib.DLL", "?GetActivationFactoryByPCWSTR@@YAJPEAXAEAVGuid@Platform@@PEAPEAX@Z", StartUI_GetActivationFactoryByPCWSTRHook);
+            }
         }
     }
     else
@@ -13026,9 +13201,10 @@ bool IsUserOOBEOrCredentialReset()
 }
 #endif
 
-#define DLL_INJECTION_METHOD_DXGI 0
-#define DLL_INJECTION_METHOD_COM 1
-#define DLL_INJECTION_METHOD_START_INJECTION 2
+#define DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport 0
+#define DLL_INJECTION_METHOD_CreateDXGIFactory1 1
+#define DLL_INJECTION_METHOD_COM 2
+#define DLL_INJECTION_METHOD_START_INJECTION 3
 HRESULT EntryPoint(DWORD dwMethod)
 {
     if (bInstanced)
@@ -13042,7 +13218,8 @@ HRESULT EntryPoint(DWORD dwMethod)
     GetModuleFileNameW(hModule, dllName, MAX_PATH);
     PathStripPathW(dllName);
     BOOL bIsDllNameDXGI = !_wcsicmp(dllName, L"dxgi.dll");
-    if (dwMethod == DLL_INJECTION_METHOD_DXGI && !bIsDllNameDXGI)
+    if ((dwMethod == DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport || dwMethod == DLL_INJECTION_METHOD_CreateDXGIFactory1)
+        && !bIsDllNameDXGI)
     {
         return E_NOINTERFACE;
     }
@@ -13064,6 +13241,24 @@ HRESULT EntryPoint(DWORD dwMethod)
         &dwLength
     );
     CloseHandle(hProcess);
+
+    // Application blacklist for loading shell extension (https://github.com/valinet/ExplorerPatcher/issues/4819)
+    static const WCHAR* const c_rgApplicationBlacklist[] =
+    {
+        L"mpc-hc",
+        L"mpc-be",
+        L"powertoys",
+        L"vlc.exe",
+        L"mpv.exe",
+        L"DisplayFusion.exe", // Crash when writing a VirtualProtect-ed region in PatchAddressBarSizing()
+    };
+    for (size_t i = 0; i < ARRAYSIZE(c_rgApplicationBlacklist); ++i)
+    {
+        if (StrStrIW(exePath, c_rgApplicationBlacklist[i]))
+        {
+            return E_NOINTERFACE;
+        }
+    }
 
     TCHAR wszSearchIndexerPath[MAX_PATH];
     GetSystemDirectoryW(wszSearchIndexerPath, MAX_PATH);
@@ -13088,12 +13283,13 @@ HRESULT EntryPoint(DWORD dwMethod)
     wcscat_s(wszShellExpectedPath, MAX_PATH, L"\\SystemApps\\ShellExperienceHost_cw5n1h2txyewy\\ShellExperienceHost.exe");
     BOOL bIsThisShellEH = !_wcsicmp(exePath, wszShellExpectedPath);
 
-    if (dwMethod == DLL_INJECTION_METHOD_DXGI)
+    if (dwMethod == DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport && !bIsThisExplorer)
     {
-        if (!(bIsThisExplorer || bIsThisStartMEH || bIsThisShellEH))
-        {
-            return E_NOINTERFACE;
-        }
+        return E_NOINTERFACE;
+    }
+    if (dwMethod == DLL_INJECTION_METHOD_CreateDXGIFactory1 && !(bIsThisStartMEH || bIsThisShellEH))
+    {
+        return E_NOINTERFACE;
     }
     if (dwMethod == DLL_INJECTION_METHOD_COM && (bIsThisExplorer || bIsThisStartMEH || bIsThisShellEH))
     {
@@ -13107,11 +13303,11 @@ HRESULT EntryPoint(DWORD dwMethod)
     bIsExplorerProcess = bIsThisExplorer;
     if (bIsThisExplorer)
     {
+        bInstanced = TRUE;
 #if WITH_MAIN_PATCHER
         if (GetSystemMetrics(SM_CLEANBOOT) != 0 || IsUserOOBEOrCredentialReset())
         {
             IncrementDLLReferenceCount(hModule);
-            bInstanced = TRUE;
             return E_NOINTERFACE;
         }
 #endif
@@ -13120,16 +13316,15 @@ HRESULT EntryPoint(DWORD dwMethod)
         if (!desktopExists && CrashCounterHandleEntryPoint())
         {
             IncrementDLLReferenceCount(hModule);
-            bInstanced = TRUE;
             return E_NOINTERFACE;
         }
 #endif
         Inject(!desktopExists);
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (bIsThisStartMEH)
     {
+        bInstanced = TRUE;
         InjectStartMenu();
 #if WITH_MAIN_PATCHER
         if (IsXamlSoundsEnabled())
@@ -13139,10 +13334,10 @@ HRESULT EntryPoint(DWORD dwMethod)
         }
 #endif
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (bIsThisShellEH)
     {
+        bInstanced = TRUE;
 #if WITH_MAIN_PATCHER
         InjectShellExperienceHost();
         if (IsXamlSoundsEnabled())
@@ -13152,13 +13347,12 @@ HRESULT EntryPoint(DWORD dwMethod)
         }
 #endif
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
     else if (dwMethod == DLL_INJECTION_METHOD_COM)
     {
+        bInstanced = TRUE;
         Inject(FALSE);
         IncrementDLLReferenceCount(hModule);
-        bInstanced = TRUE;
     }
 
     return E_NOINTERFACE;
@@ -13168,13 +13362,13 @@ HRESULT EntryPoint(DWORD dwMethod)
 // for explorer.exe and ShellExperienceHost.exe
 __declspec(dllexport) HRESULT DXGIDeclareAdapterRemovalSupport()
 {
-    EntryPoint(DLL_INJECTION_METHOD_DXGI);
+    EntryPoint(DLL_INJECTION_METHOD_DXGIDeclareAdapterRemovalSupport);
     return DXGIDeclareAdapterRemovalSupportOriginal();
 }
 // for StartMenuExperienceHost.exe via DXGI
 __declspec(dllexport) HRESULT CreateDXGIFactory1(void* p1, void** p2)
 {
-    EntryPoint(DLL_INJECTION_METHOD_DXGI);
+    EntryPoint(DLL_INJECTION_METHOD_CreateDXGIFactory1);
     return CreateDXGIFactory1Original(p1, p2);
 }
 // for StartMenuExperienceHost.exe via injection from explorer
